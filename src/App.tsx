@@ -96,12 +96,12 @@ export default function App() {
           void invoke("close_terminal", { sessionId });
           return;
         }
-        terminal.write("Gocode IDE native terminal ready.\\r\\n");
+        terminal.write("Gocode IDE native terminal ready.\r\n");
         inputSubscription = terminal.onData(data => {
           if (sessionId) void invoke("write_terminal_input", { sessionId, input: data }).catch(error => setMessage("Terminal input failed: " + String(error)));
         });
       } catch (error) {
-        terminal.write("\\r\\nTerminal could not start: " + String(error) + "\\r\\n");
+        terminal.write("\r\nTerminal could not start: " + String(error) + "\r\n");
         setMessage("Terminal could not start.");
       }
     };
