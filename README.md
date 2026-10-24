@@ -15,13 +15,16 @@ Gocode IDE is a free, local-first development environment in active development.
 
 The development branch currently has:
 - React + TypeScript + Vite frontend with an early editor-style UI.
-- Browser prototype text editing, local persistence for the welcome buffer, and download action.
+- Monaco editor with language-aware syntax highlighting for common programming languages.
+- Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
+- Initial native desktop open/save dialogs using the Tauri dialog and filesystem plugins.
+- Branded blue G monogram for the workbench, browser favicon, and Windows application icon.
 - Initial Tauri 2 / Rust desktop-shell scaffolding.
 - Windows MSI GitHub Actions workflow that is being tested.
 - Automated frontend type-check/build workflow.
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
-**This is not yet a complete IDE.** The current editor is a prototype. The current terminal, debugger, Git, compiler/toolchain, extension manager, and native filesystem integration are not implemented. A Windows MSI has not yet been verified as successfully built or tested.
+**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The terminal, debugger, Git operations, compiler/toolchain adapters, extension host, and language-server integration are not implemented. The Windows MSI workflow is still being verified; do not treat a queued/running workflow as a successful installer.
 
 ## Architecture and policies
 
