@@ -12,7 +12,7 @@ export default function App() {
   const [text, setText] = useState(() => localStorage.getItem("gocode-ide-editor-text") ?? "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\n## Getting started\n\nCreate a file or start writing here. This editor is an early prototype.");
   const [files, setFiles] = useState(["Welcome.md"]);
   const [showTerminal, setShowTerminal] = useState(true);
-  const [terminalText, setTerminalText] = useState("Gocode IDE terminal panel prototype.\nA real system terminal is not connected yet.");
+  const terminalText = "Gocode IDE terminal panel prototype.\nA real system terminal is not connected yet.";
   const [newFile, setNewFile] = useState(false);
   const [draftName, setDraftName] = useState("");
   const [saved, setSaved] = useState(true);
