@@ -31,6 +31,9 @@
     ],
     "category": "DeveloperTool",
     "shortDescription": "Free local-first development environment",
-    "longDescription": "Gocode IDE is a free, local-first development environment. Desktop features are under active development."
+    "longDescription": "Gocode IDE is a free, local-first development environment. Desktop features are under active development.",
+    "icon": [
+      "icons/icon.ico"
+    ]
   }
 }
