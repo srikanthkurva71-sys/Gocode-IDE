@@ -95,7 +95,29 @@ export default function App() {
     if (fileName === name) setFileName("Welcome.md");
     setMessage("Removed " + name + " from this browser workspace.");
   }
-  function openFiles(event: ChangeEvent<HTMLInputElement>) {\n    const selected = Array.from(event.target.files ?? []);\n    if (!selected.length) return;\n    let remaining = selected.length;\n    const imported: Workspace = {};\n    for (const file of selected) {\n      const reader = new FileReader();\n      reader.onload = () => {\n        imported[file.name] = String(reader.result ?? "");\n        remaining -= 1;\n        if (remaining === 0) {\n          setFiles(current => ({ ...current, ...imported }));\n          setFileName(selected[selected.length - 1].name);\n          setPanel("Explorer");\n          setMessage("Opened " + selected.length + " file(s) into the browser workspace.");\n        }\n      };\n      reader.onerror = () => { remaining -= 1; if (remaining === 0) setMessage("Some files could not be read."); };\n      reader.readAsText(file);\n    }\n    event.target.value = "";\n  }\n  function exportWorkspace() {
+  function openFiles(event: ChangeEvent<HTMLInputElement>) {
+    const selected = Array.from(event.target.files ?? []);
+    if (!selected.length) return;
+    let remaining = selected.length;
+    const imported: Workspace = {};
+    for (const file of selected) {
+      const reader = new FileReader();
+      reader.onload = () => {
+        imported[file.name] = String(reader.result ?? "");
+        remaining -= 1;
+        if (remaining === 0) {
+          setFiles(current => ({ ...current, ...imported }));
+          setFileName(selected[selected.length - 1].name);
+          setPanel("Explorer");
+          setMessage("Opened " + selected.length + " file(s) into the browser workspace.");
+        }
+      };
+      reader.onerror = () => { remaining -= 1; if (remaining === 0) setMessage("Some files could not be read."); };
+      reader.readAsText(file);
+    }
+    event.target.value = "";
+  }
+  function exportWorkspace() {
     download("gocode-workspace.json", JSON.stringify({ app: "Gocode IDE", version: 1, files }, null, 2), "application/json");
     setMessage("Workspace backup downloaded.");
   }
