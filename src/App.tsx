@@ -1,5 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
 import Editor from "@monaco-editor/react";
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
+import "@xterm/xterm/css/xterm.css";
+import { listen } from "@tauri-apps/api/event";
+import { invoke } from "@tauri-apps/api/core";
+import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
@@ -45,6 +51,7 @@ export default function App() {
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
   const [showTerminal, setShowTerminal] = useState(true);
+  const terminalHost = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState("Ready");
   const [searchTerm, setSearchTerm] = useState("");
   const [findText, setFindText] = useState("");
@@ -59,6 +66,61 @@ export default function App() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(files)); }
     catch { setMessage("Browser storage is full. Download your files for backup."); }
   }, [files]);
+
+  useEffect(() => {
+    if (!showTerminal || !isTauri() || !terminalHost.current) return;
+    const terminal = new Terminal({
+      cursorBlink: true,
+      convertEol: true,
+      fontSize: 12,
+      fontFamily: 'Consolas, "Cascadia Mono", monospace',
+      theme: { background: "#111318", foreground: "#d6dbea", cursor: "#8da7ff" },
+      scrollback: 3000
+    });
+    const fitAddon = new FitAddon();
+    terminal.loadAddon(fitAddon);
+    terminal.open(terminalHost.current);
+    fitAddon.fit();
+
+    let sessionId: string | null = null;
+    let unlisten: (() => void) | undefined;
+    let inputSubscription: { dispose: () => void } | undefined;
+    let disposed = false;
+    const setup = async () => {
+      try {
+        unlisten = await listen<{ session_id: string; data: string }>("terminal-output", event => {
+          if (event.payload.session_id === sessionId) terminal.write(event.payload.data);
+        });
+        sessionId = await invoke<string>("start_terminal", { cols: terminal.cols, rows: terminal.rows });
+        if (disposed) {
+          void invoke("close_terminal", { sessionId });
+          return;
+        }
+        terminal.write("Gocode IDE native terminal ready.\\r\\n");
+        inputSubscription = terminal.onData(data => {
+          if (sessionId) void invoke("write_terminal_input", { sessionId, input: data }).catch(error => setMessage("Terminal input failed: " + String(error)));
+        });
+      } catch (error) {
+        terminal.write("\\r\\nTerminal could not start: " + String(error) + "\\r\\n");
+        setMessage("Terminal could not start.");
+      }
+    };
+    void setup();
+
+    const resize = () => {
+      fitAddon.fit();
+      if (sessionId) void invoke("resize_terminal", { sessionId, cols: terminal.cols, rows: terminal.rows });
+    };
+    window.addEventListener("resize", resize);
+    return () => {
+      disposed = true;
+      window.removeEventListener("resize", resize);
+      inputSubscription?.dispose();
+      unlisten?.();
+      if (sessionId) void invoke("close_terminal", { sessionId });
+      terminal.dispose();
+    };
+  }, [showTerminal]);
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -199,7 +261,7 @@ export default function App() {
       <main className="main"><div className="tabs"><div className="tab"><span className="file-icon">◇</span>{fileName}<button onClick={downloadFile} title="Download current file">↓</button></div><div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
         <div className="editor-wrap"><Editor height="100%" language={languageForFile(fileName)} value={text} theme="vs-dark" onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: false }, fontSize: 13, tabSize: 2, wordWrap: "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
-        <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className="bottom-active">PROBLEMS <span>0</span></button><button>OUTPUT</button><button>DEBUG CONSOLE</button><button className="bottom-active">TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{showTerminal && <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE workspace prototype</div><div className="terminal-note">This panel is a placeholder, not a real system shell. Running programs is not available yet.</div></div>}</div>
+        <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className="bottom-active">PROBLEMS <span>0</span></button><button>OUTPUT</button><button>DEBUG CONSOLE</button><button className="bottom-active">TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
       </main>
     </div>
     <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Download · Ctrl+N New · Ctrl+F Find</span><span className="push">Gocode IDE · Free and local-first</span></footer>
