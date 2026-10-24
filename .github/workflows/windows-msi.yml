@@ -39,9 +39,20 @@ jobs:
         run: npm install
       - name: Build Windows MSI
         run: npm run tauri -- build
-      - name: Upload MSI artifact
+      - name: Generate MSI SHA-256 checksum
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi"
+          if (-not $files) { throw "No MSI was produced." }
+          foreach ($file in $files) {
+            $hash = Get-FileHash $file.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($file.Name)" | Out-File -FilePath "$($file.FullName).sha256" -Encoding ascii
+          }
+      - name: Upload MSI and checksum
         uses: actions/upload-artifact@v4
         with:
           name: gocode-ide-windows-msi
-          path: src-tauri/target/release/bundle/msi/*.msi
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sha256
           if-no-files-found: error
