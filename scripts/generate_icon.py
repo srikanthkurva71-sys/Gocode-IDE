@@ -8,8 +8,9 @@ pixels = bytearray()
 for y in range(SIZE - 1, -1, -1):
     for x in range(SIZE):
         # B, G, R, A (bottom-up DIB pixel order)
-        blue = (x < 2 or x > 29 or y < 2 or y > 29)
-        b, g, r = (48, 70, 150) if blue else (218, 139, 57)
+        border = (x < 2 or x > 29 or y < 2 or y > 29)
+        # BGR values for a saturated blue tile and a deep-blue border.
+        b, g, r = (92, 48, 28) if border else (235, 125, 72)
         # A blocky G: white outer ring with a right-side opening and crossbar.
         in_ring = 7 <= x <= 24 and 7 <= y <= 24 and (
             x <= 10 or x >= 21 or y <= 10 or y >= 21
