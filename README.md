@@ -2,17 +2,38 @@
 
 Gocode IDE is a free, local-first development environment in active development.
 
-## Current prototype
+## Project principles
 
-The current development branch contains an early React + TypeScript + Vite interface with an editable text buffer, basic panels, browser-local text persistence, a download action for the current file, and a GitHub Actions frontend build check.
+- No Gocode IDE subscription, advertisements, paid feature tiers, or mandatory account/OTP.
+- Core editing should work locally without cloud sign-in.
+- No automatic project uploads. External AI/cloud integrations must be optional and disclose what data leaves the device before a user confirms.
+- External providers may have their own terms or charges; Gocode IDE itself does not charge users.
+- Prefer free/open-source extensions while clearly displaying publisher, license, and permissions.
+- Compatibility and release approval are claimed only after verification.
 
-## Important limitations
+## Current implementation status
 
-This is not yet a complete desktop IDE. The current browser prototype does **not** access the user's real filesystem, execute shell commands, compile programs, provide a real language server/debugger, install extensions, or produce a Windows installer. Some interface panels are placeholders.
+The development branch currently has:
+- React + TypeScript + Vite frontend with an early editor-style UI.
+- Browser prototype text editing, local persistence for the welcome buffer, and download action.
+- Initial Tauri 2 / Rust desktop-shell scaffolding.
+- Windows MSI GitHub Actions workflow that is being tested.
+- Automated frontend type-check/build workflow.
+- Architecture, security, privacy, Windows compatibility, and release planning documents.
+
+**This is not yet a complete IDE.** The current editor is a prototype. The current terminal, debugger, Git, compiler/toolchain, extension manager, and native filesystem integration are not implemented. A Windows MSI has not yet been verified as successfully built or tested.
+
+## Architecture and policies
+
+- [Architecture and product requirements](docs/ARCHITECTURE.md)
+- [Security model](docs/SECURITY.md)
+- [Privacy principles](docs/PRIVACY.md)
+- [Windows compatibility policy](docs/COMPATIBILITY.md)
+- [Release checklist](docs/RELEASE.md)
 
 ## Development
 
-Requires Node.js 20 or newer.
+Requires Node.js 20 or newer for the frontend. Tauri desktop builds also require the Rust toolchain and platform prerequisites.
 
 ```sh
 npm install
@@ -20,9 +41,10 @@ npm run dev
 npm run build
 ```
 
-## Project principles
+To build the desktop application after installing prerequisites:
 
-- Free to use; no subscription or advertising tiers are planned.
-- Local-first: project files should not be uploaded to external services without explicit user action and disclosure.
-- External AI providers, if added, may have their own terms and charges.
-- Compatibility, installer signing, and Windows version support must be verified before being promised.
+```sh
+npm run tauri -- build
+```
+
+Do not treat a successful frontend build as proof of Windows compatibility. The desktop package must be built and tested on Windows.
