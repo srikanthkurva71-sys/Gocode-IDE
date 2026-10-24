@@ -13,6 +13,10 @@ on:
       - "vite.config.ts"
       - ".github/workflows/windows-msi.yml"
 
+concurrency:
+  group: windows-msi-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build-msi:
     runs-on: windows-latest
