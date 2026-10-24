@@ -12,6 +12,9 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
+type ProjectEntry = { path: string; is_dir: boolean; size: number };
+type GitResult = { available: boolean; output: string; branch: string; dirty: boolean };
+type TaskResult = { command: string; success: boolean; output: string };
 const STORAGE_KEY = "gocode-ide-workspace-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThis is an early browser prototype. Files are stored in this browser. Use Download to save a copy. The real desktop filesystem, terminal, compiler, debugger, Git integration, and extension host are not implemented yet.";
 function languageForFile(name: string): string {
@@ -47,6 +50,14 @@ export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [files, setFiles] = useState<Workspace>(loadWorkspace);
   const [nativePaths, setNativePaths] = useState<Record<string, string>>({});
+  const [projectRoot, setProjectRoot] = useState<string | null>(null);
+  const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
+  const [gitInfo, setGitInfo] = useState<GitResult | null>(null);
+  const [gitDiff, setGitDiff] = useState("");
+  const [commitMessage, setCommitMessage] = useState("");
+  const [tasks, setTasks] = useState<string[]>([]);
+  const [taskOutput, setTaskOutput] = useState("");
+  const [taskRunning, setTaskRunning] = useState(false);
   const [fileName, setFileName] = useState("Welcome.md");
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
@@ -146,6 +157,85 @@ export default function App() {
     download(fileName, text);
     setMessage("Downloaded " + fileName);
   }
+  async function refreshProject() {
+    try {
+      const entries = await invoke<ProjectEntry[]>("list_project_files");
+      setProjectEntries(entries);
+      const available = await invoke<string[]>("detect_project_tasks");
+      setTasks(available);
+      try { setGitInfo(await invoke<GitResult>("git_status")); }
+      catch { setGitInfo(null); }
+    } catch (error) { setMessage("Project refresh failed: " + String(error)); }
+  }
+  async function openProjectFolder() {
+    try {
+      const selected = await openDialog({ multiple: false, directory: true, title: "Open project folder" });
+      if (!selected || Array.isArray(selected)) return;
+      const root = await invoke<string>("set_project_root", { path: selected });
+      setProjectRoot(root);
+      await refreshProject();
+      setPanel("Explorer");
+      setMessage("Opened project: " + root);
+    } catch (error) { setMessage("Open project failed: " + String(error)); }
+  }
+  async function openProjectEntry(path: string) {
+    try {
+      const contents = await invoke<string>("read_project_file", { path });
+      setFiles(current => ({ ...current, [path]: contents }));
+      setFileName(path);
+      setPanel("Explorer");
+      setMessage("Opened project file " + path);
+    } catch (error) { setMessage("Open project file failed: " + String(error)); }
+  }
+  async function saveProjectFile() {
+    try {
+      await invoke("write_project_file", { path: fileName, content: text });
+      setMessage("Saved project file " + fileName);
+      await refreshProject();
+    } catch (error) { setMessage("Project save failed: " + String(error)); }
+  }
+  async function refreshGit() {
+    try {
+      setGitInfo(await invoke<GitResult>("git_status"));
+      setGitDiff(await invoke<string>("git_diff"));
+      setMessage("Git status refreshed.");
+    } catch (error) { setGitInfo(null); setMessage("Git unavailable: " + String(error)); }
+  }
+  async function stageGitChanges() {
+    try {
+      const output = await invoke<string>("git_stage_all");
+      setMessage("Git stage complete. " + output.trim());
+      await refreshGit();
+    } catch (error) { setMessage("Git stage failed: " + String(error)); }
+  }
+  async function commitGitChanges() {
+    try {
+      const output = await invoke<string>("git_commit", { message: commitMessage });
+      setMessage("Git commit created.");
+      setTaskOutput(output);
+      setCommitMessage("");
+      await refreshGit();
+    } catch (error) { setMessage("Git commit failed: " + String(error)); }
+  }
+  async function runTask(task: string) {
+    setTaskRunning(true);
+    setTaskOutput("Running " + task + " …");
+    try {
+      const result = await invoke<TaskResult>("run_project_task", { task });
+      setTaskOutput((result.success ? "SUCCESS: " : "FAILED: ") + result.command + "\\n\\n" + result.output);
+      setMessage(result.success ? task + " completed." : task + " failed.");
+    } catch (error) {
+      setTaskOutput("Could not run task: " + String(error));
+      setMessage("Build/run task failed to start.");
+    } finally { setTaskRunning(false); }
+  }
+  useEffect(() => {
+    if (!isTauri()) return;
+    void invoke<string | null>("get_project_root").then(root => {
+      if (root) { setProjectRoot(root); void refreshProject(); }
+    }).catch(() => undefined);
+  }, []);
+
   async function openNativeFile() {
     try {
       const selected = await openDialog({ multiple: false, directory: false, filters: [{ name: "Source files", extensions: ["txt", "md", "ts", "tsx", "js", "jsx", "json", "html", "css", "py", "rs", "c", "cpp", "h", "java", "go", "yaml", "yml", "toml", "xml", "sql", "sh"] }] });
@@ -240,12 +330,12 @@ export default function App() {
 
   return <div className="app">
     <header className="titlebar"><div className="brand"><img className="brand-logo" src="/gocode-logo.svg" alt="" /><span>Gocode <b>IDE</b></span></div><div className="title-center">Workspace <span className="muted">/</span> my-project</div><div className="window-actions"><span>—</span><span>□</span><span>×</span></div></header>
-    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => { if (isTauri()) void openNativeFile(); else document.getElementById("open-files-input")?.click(); }}>Open File</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={() => void saveCurrentFile()}>Save File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Browser prototype · Local-first</div></div>
+    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => { if (isTauri()) void openNativeFile(); else document.getElementById("open-files-input")?.click(); }}>Open File</button><button onClick={() => isTauri() ? void openProjectFolder() : setMessage("Open project folder is available in the desktop app.")}>Open Project</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={() => void saveCurrentFile()}>Save File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Local-first · {projectRoot ? "Project open" : "No project"}</div></div>
     <div className="workarea">
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
         {panel === "Explorer" ? <>
-          <div className="tree-heading">⌄　MY-PROJECT <button title="New file" onClick={() => setNewFile(true)}>＋</button></div>
+          <div className="tree-heading">⌄　{projectRoot ? projectRoot.split(/[\\\\/]/).pop() : "MY-PROJECT"} <button title="New file" onClick={() => setNewFile(true)}>＋</button></div>{projectRoot && <div className="project-root-label" title={projectRoot}>{projectRoot}</div>}{projectRoot && projectEntries.map(entry => <div className={"file-row project-row " + (fileName === entry.path ? "selected" : "")} key={entry.path} style={{ paddingLeft: Math.min(7 + (entry.path.split("/").length - 1) * 12, 60) }}><button className="file-open" onClick={() => entry.is_dir ? undefined : void openProjectEntry(entry.path)}><span className="file-icon">{entry.is_dir ? "▸" : "◇"}</span>{entry.path.split("/").pop()}</button></div>)}
           {Object.keys(files).sort().map(name => <div className={"file-row " + (fileName === name ? "selected" : "")} key={name}>
             <button className="file-open" onClick={() => setFileName(name)}><span className="file-icon">◇</span>{name}</button>
             <button className="file-delete" title={"Remove " + name} onClick={() => removeFile(name)}>×</button>
