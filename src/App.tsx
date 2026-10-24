@@ -248,6 +248,7 @@ export default function App() {
     } catch (error) { setMessage("Open failed: " + String(error)); }
   }
   async function saveCurrentFile() {
+    if (isTauri() && projectRoot && projectEntries.some(entry => entry.path === fileName && !entry.is_dir) && !nativePaths[fileName]) { await saveProjectFile(); return; }
     if (!isTauri()) { downloadFile(); return; }
     try {
       const path = nativePaths[fileName] ?? await saveDialog({ defaultPath: fileName, filters: [{ name: "Text and source files", extensions: [fileName.split(".").pop() || "txt"] }] });
