@@ -366,13 +366,25 @@ fn close_terminal(state: State<'_, TerminalState>, session_id: String) -> Result
 pub fn run() {
     tauri::Builder::default()
         .manage(TerminalState::default())
+        .manage(ProjectState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
             start_terminal,
             write_terminal_input,
             resize_terminal,
-            close_terminal
+            close_terminal,
+            set_project_root,
+            get_project_root,
+            list_project_files,
+            read_project_file,
+            write_project_file,
+            git_status,
+            git_diff,
+            git_stage_all,
+            git_commit,
+            detect_project_tasks,
+            run_project_task
         ])
         .run(tauri::generate_context!())
         .expect("error while running Gocode IDE");
