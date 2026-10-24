@@ -6,6 +6,7 @@ on:
     branches: ["work/**"]
     paths:
       - "src-tauri/**"
+      - "scripts/**"
       - "src/**"
       - "package.json"
       - "package-lock.json"
@@ -24,6 +25,8 @@ jobs:
           node-version: 22
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Generate Windows application icon
+        run: python scripts/generate_icon.py
       - name: Install frontend dependencies
         run: npm install
       - name: Build Windows MSI
