@@ -39,6 +39,24 @@ jobs:
         run: npm install
       - name: Build Windows MSI
         run: npm run tauri -- build
+      - name: Install and launch smoke test
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
+          if (-not $msi) { throw "No MSI was produced for smoke testing." }
+          $installDir = Join-Path $env:RUNNER_TEMP "Gocode IDE smoke"
+          New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+          $install = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/i", $msi.FullName, "/qn", "/norestart", "INSTALLDIR=$installDir") -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "MSI installation failed with exit code $($install.ExitCode)." }
+          $exe = Get-ChildItem -Path $installDir -Filter "gocode-ide.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "Installed Gocode IDE executable was not found." }
+          $app = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 5
+          $app.Refresh()
+          if ($app.HasExited) { throw "Gocode IDE exited during launch smoke test with code $($app.ExitCode)." }
+          Stop-Process -Id $app.Id -Force
+          $uninstall = Start-Process -FilePath "msiexec.exe" -ArgumentList @("/x", $msi.FullName, "/qn", "/norestart") -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)." }
       - name: Generate MSI SHA-256 checksum
         shell: pwsh
         run: |
