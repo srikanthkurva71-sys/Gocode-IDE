@@ -1,0 +1,36 @@
+name: Windows MSI build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/**"]
+    paths:
+      - "src-tauri/**"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - ".github/workflows/windows-msi.yml"
+
+jobs:
+  build-msi:
+    runs-on: windows-latest
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Build Windows MSI
+        run: npm run tauri -- build
+      - name: Upload MSI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: gocode-ide-windows-msi
+          path: src-tauri/target/release/bundle/msi/*.msi
+          if-no-files-found: error
