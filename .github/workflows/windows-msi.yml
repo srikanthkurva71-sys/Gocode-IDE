@@ -14,7 +14,7 @@ on:
       - ".github/workflows/windows-msi.yml"
 
 concurrency:
-  group: windows-msi-${{ github.ref }}
+  group: windows-msi-v2-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
