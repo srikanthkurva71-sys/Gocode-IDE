@@ -44,6 +44,7 @@ npm run build
 To build the desktop application after installing prerequisites:
 
 ```sh
+python scripts/generate_icon.py
 npm run tauri -- build
 ```
 
