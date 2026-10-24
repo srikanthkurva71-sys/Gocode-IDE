@@ -1,10 +1,11 @@
 import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
+import Editor from "@monaco-editor/react";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
 const STORAGE_KEY = "gocode-ide-workspace-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThis is an early browser prototype. Files are stored in this browser. Use Download to save a copy. The real desktop filesystem, terminal, compiler, debugger, Git integration, and extension host are not implemented yet.";
-const panels: { name: Panel; icon: string }[] = [
+function languageForFile(name: string): string {\n  const ext = name.split(".").pop()?.toLowerCase();\n  const languages: Record<string, string> = { ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", html: "html", css: "css", scss: "scss", md: "markdown", py: "python", rs: "rust", c: "c", h: "c", cpp: "cpp", hpp: "cpp", java: "java", cs: "csharp", go: "go", rb: "ruby", php: "php", xml: "xml", yaml: "yaml", yml: "yaml", sh: "shell", sql: "sql", toml: "ini", ps1: "powershell", bat: "bat" };\n  return (ext && languages[ext]) || "plaintext";\n}\n\nconst panels: { name: Panel; icon: string }[] = [
   { name: "Explorer", icon: "▤" }, { name: "Search", icon: "⌕" },
   { name: "Source Control", icon: "⑂" }, { name: "Run & Debug", icon: "▷" },
   { name: "Extensions", icon: "▦" }, { name: "Settings", icon: "⚙" }
@@ -94,7 +95,7 @@ export default function App() {
     if (fileName === name) setFileName("Welcome.md");
     setMessage("Removed " + name + " from this browser workspace.");
   }
-  function exportWorkspace() {
+  function openFiles(event: ChangeEvent<HTMLInputElement>) {\n    const selected = Array.from(event.target.files ?? []);\n    if (!selected.length) return;\n    let remaining = selected.length;\n    const imported: Workspace = {};\n    for (const file of selected) {\n      const reader = new FileReader();\n      reader.onload = () => {\n        imported[file.name] = String(reader.result ?? "");\n        remaining -= 1;\n        if (remaining === 0) {\n          setFiles(current => ({ ...current, ...imported }));\n          setFileName(selected[selected.length - 1].name);\n          setPanel("Explorer");\n          setMessage("Opened " + selected.length + " file(s) into the browser workspace.");\n        }\n      };\n      reader.onerror = () => { remaining -= 1; if (remaining === 0) setMessage("Some files could not be read."); };\n      reader.readAsText(file);\n    }\n    event.target.value = "";\n  }\n  function exportWorkspace() {
     download("gocode-workspace.json", JSON.stringify({ app: "Gocode IDE", version: 1, files }, null, 2), "application/json");
     setMessage("Workspace backup downloaded.");
   }
@@ -124,7 +125,7 @@ export default function App() {
 
   return <div className="app">
     <header className="titlebar"><div className="brand"><img className="brand-logo" src="/gocode-logo.svg" alt="" /><span>Gocode <b>IDE</b></span></div><div className="title-center">Workspace <span className="muted">/</span> my-project</div><div className="window-actions"><span>—</span><span>□</span><span>×</span></div></header>
-    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Browser prototype · Local-first</div></div>
+    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => document.getElementById("open-files-input")?.click()}>Open Files</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Browser prototype · Local-first</div></div>
     <div className="workarea">
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
@@ -144,7 +145,7 @@ export default function App() {
       </aside>
       <main className="main"><div className="tabs"><div className="tab"><span className="file-icon">◇</span>{fileName}<button onClick={downloadFile} title="Download current file">↓</button></div><div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
-        <div className="editor-wrap"><div className="line-numbers">{Array.from({ length: lineCount }, (_, index) => <div key={index}>{index + 1}</div>)}</div><textarea aria-label="Editor" spellCheck={false} value={text} onChange={e => setFiles(current => ({ ...current, [fileName]: e.target.value }))} /></div>
+        <div className="editor-wrap"><Editor height="100%" language={languageForFile(fileName)} value={text} theme="vs-dark" onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: false }, fontSize: 13, tabSize: 2, wordWrap: "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className="bottom-active">PROBLEMS <span>0</span></button><button>OUTPUT</button><button>DEBUG CONSOLE</button><button className="bottom-active">TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{showTerminal && <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE workspace prototype</div><div className="terminal-note">This panel is a placeholder, not a real system shell. Running programs is not available yet.</div></div>}</div>
       </main>
     </div>
