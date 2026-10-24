@@ -5,7 +5,13 @@ type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensi
 type Workspace = Record<string, string>;
 const STORAGE_KEY = "gocode-ide-workspace-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThis is an early browser prototype. Files are stored in this browser. Use Download to save a copy. The real desktop filesystem, terminal, compiler, debugger, Git integration, and extension host are not implemented yet.";
-function languageForFile(name: string): string {\n  const ext = name.split(".").pop()?.toLowerCase();\n  const languages: Record<string, string> = { ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", html: "html", css: "css", scss: "scss", md: "markdown", py: "python", rs: "rust", c: "c", h: "c", cpp: "cpp", hpp: "cpp", java: "java", cs: "csharp", go: "go", rb: "ruby", php: "php", xml: "xml", yaml: "yaml", yml: "yaml", sh: "shell", sql: "sql", toml: "ini", ps1: "powershell", bat: "bat" };\n  return (ext && languages[ext]) || "plaintext";\n}\n\nconst panels: { name: Panel; icon: string }[] = [
+function languageForFile(name: string): string {
+  const ext = name.split(".").pop()?.toLowerCase();
+  const languages: Record<string, string> = { ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", html: "html", css: "css", scss: "scss", md: "markdown", py: "python", rs: "rust", c: "c", h: "c", cpp: "cpp", hpp: "cpp", java: "java", cs: "csharp", go: "go", rb: "ruby", php: "php", xml: "xml", yaml: "yaml", yml: "yaml", sh: "shell", sql: "sql", toml: "ini", ps1: "powershell", bat: "bat" };
+  return (ext && languages[ext]) || "plaintext";
+}
+
+const panels: { name: Panel; icon: string }[] = [
   { name: "Explorer", icon: "▤" }, { name: "Search", icon: "⌕" },
   { name: "Source Control", icon: "⑂" }, { name: "Run & Debug", icon: "▷" },
   { name: "Extensions", icon: "▦" }, { name: "Settings", icon: "⚙" }
