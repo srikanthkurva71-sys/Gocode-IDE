@@ -24,7 +24,7 @@ The development branch currently has:
 - Automated frontend type-check/build workflow.
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
-**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. The debugger, Git operations, compiler/toolchain adapters, extension host, and language-server integration are not implemented. The Windows MSI workflow is still being verified; do not treat a queued/running workflow as a successful installer.
+**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. The debugger, Git operations, compiler/toolchain adapters, extension host, and language-server integration are not implemented. A clean-runner install/launch/uninstall smoke test is now included in the Windows MSI workflow. It must pass before treating that workflow as a verified package; manual testing on supported Windows versions is still required.
 
 ## Architecture and policies
 
