@@ -9,13 +9,14 @@ const panels: {name: Panel; icon: string}[] = [
 export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [fileName, setFileName] = useState("Welcome.md");
-  const [text, setText] = useState("# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\n## Getting started\n\nCreate a file or start writing here. This editor is an early prototype.");
+  const [text, setText] = useState(() => localStorage.getItem("gocode-ide-editor-text") ?? "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\n## Getting started\n\nCreate a file or start writing here. This editor is an early prototype.");
   const [files, setFiles] = useState(["Welcome.md"]);
   const [showTerminal, setShowTerminal] = useState(true);
   const [terminalText, setTerminalText] = useState("Gocode IDE terminal panel prototype.\nA real system terminal is not connected yet.");
   const [newFile, setNewFile] = useState(false);
   const [draftName, setDraftName] = useState("");
-  const [saved, setSaved] = useState(true);\n  useEffect(() => { localStorage.setItem("gocode-ide-editor-text", text); }, [text]);
+  const [saved, setSaved] = useState(true);
+  useEffect(() => { localStorage.setItem("gocode-ide-editor-text", text); }, [text]);
   function createFile() {
     const name = draftName.trim();
     if (!name) return;
