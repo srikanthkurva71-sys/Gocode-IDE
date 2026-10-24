@@ -1,5 +1,8 @@
 import { useEffect, useMemo, useState, type FormEvent, type ChangeEvent } from "react";
 import Editor from "@monaco-editor/react";
+import { isTauri } from "@tauri-apps/api/core";
+import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
+import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -37,6 +40,7 @@ function loadWorkspace(): Workspace {
 export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [files, setFiles] = useState<Workspace>(loadWorkspace);
+  const [nativePaths, setNativePaths] = useState<Record<string, string>>({});
   const [fileName, setFileName] = useState("Welcome.md");
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
@@ -59,7 +63,7 @@ export default function App() {
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
-        event.preventDefault(); downloadFile();
+        event.preventDefault(); void saveCurrentFile();
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
         event.preventDefault(); setPanel("Explorer"); setNewFile(true);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
@@ -80,7 +84,7 @@ export default function App() {
     download(fileName, text);
     setMessage("Downloaded " + fileName);
   }
-  function createFile(event: FormEvent<HTMLFormElement>) {
+  async function openNativeFile() {\n    try {\n      const selected = await openDialog({ multiple: false, directory: false, filters: [{ name: "Source files", extensions: ["txt", "md", "ts", "tsx", "js", "jsx", "json", "html", "css", "py", "rs", "c", "cpp", "h", "java", "go", "yaml", "yml", "toml", "xml", "sql", "sh"] }] });\n      if (!selected || Array.isArray(selected)) return;\n      const contents = await readTextFile(selected);\n      const name = selected.split(/[\\\\/]/).pop() || "Untitled.txt";\n      setFiles(current => ({ ...current, [name]: contents }));\n      setNativePaths(current => ({ ...current, [name]: selected }));\n      setFileName(name); setPanel("Explorer"); setMessage("Opened " + name);\n    } catch (error) { setMessage("Open failed: " + String(error)); }\n  }\n  async function saveCurrentFile() {\n    if (!isTauri()) { downloadFile(); return; }\n    try {\n      const path = nativePaths[fileName] ?? await saveDialog({ defaultPath: fileName, filters: [{ name: "Text and source files", extensions: [fileName.split(".").pop() || "txt"] }] });\n      if (!path || typeof path !== "string") return;\n      await writeTextFile(path, text);\n      setNativePaths(current => ({ ...current, [fileName]: path }));\n      setMessage("Saved " + fileName);\n    } catch (error) { setMessage("Save failed: " + String(error)); }\n  }\n  function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = draftName.trim().replace(/^\/+/, "");
     if (!name || name.split("/").some(part => !part || part === "." || part === "..")) {
@@ -153,7 +157,7 @@ export default function App() {
 
   return <div className="app">
     <header className="titlebar"><div className="brand"><img className="brand-logo" src="/gocode-logo.svg" alt="" /><span>Gocode <b>IDE</b></span></div><div className="title-center">Workspace <span className="muted">/</span> my-project</div><div className="window-actions"><span>—</span><span>□</span><span>×</span></div></header>
-    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => document.getElementById("open-files-input")?.click()}>Open Files</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Browser prototype · Local-first</div></div>
+    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => { if (isTauri()) void openNativeFile(); else document.getElementById("open-files-input")?.click(); }}>Open File</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={() => void saveCurrentFile()}>Save File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Browser prototype · Local-first</div></div>
     <div className="workarea">
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
