@@ -84,7 +84,28 @@ export default function App() {
     download(fileName, text);
     setMessage("Downloaded " + fileName);
   }
-  async function openNativeFile() {\n    try {\n      const selected = await openDialog({ multiple: false, directory: false, filters: [{ name: "Source files", extensions: ["txt", "md", "ts", "tsx", "js", "jsx", "json", "html", "css", "py", "rs", "c", "cpp", "h", "java", "go", "yaml", "yml", "toml", "xml", "sql", "sh"] }] });\n      if (!selected || Array.isArray(selected)) return;\n      const contents = await readTextFile(selected);\n      const name = selected.split(/[\\\\/]/).pop() || "Untitled.txt";\n      setFiles(current => ({ ...current, [name]: contents }));\n      setNativePaths(current => ({ ...current, [name]: selected }));\n      setFileName(name); setPanel("Explorer"); setMessage("Opened " + name);\n    } catch (error) { setMessage("Open failed: " + String(error)); }\n  }\n  async function saveCurrentFile() {\n    if (!isTauri()) { downloadFile(); return; }\n    try {\n      const path = nativePaths[fileName] ?? await saveDialog({ defaultPath: fileName, filters: [{ name: "Text and source files", extensions: [fileName.split(".").pop() || "txt"] }] });\n      if (!path || typeof path !== "string") return;\n      await writeTextFile(path, text);\n      setNativePaths(current => ({ ...current, [fileName]: path }));\n      setMessage("Saved " + fileName);\n    } catch (error) { setMessage("Save failed: " + String(error)); }\n  }\n  function createFile(event: FormEvent<HTMLFormElement>) {
+  async function openNativeFile() {
+    try {
+      const selected = await openDialog({ multiple: false, directory: false, filters: [{ name: "Source files", extensions: ["txt", "md", "ts", "tsx", "js", "jsx", "json", "html", "css", "py", "rs", "c", "cpp", "h", "java", "go", "yaml", "yml", "toml", "xml", "sql", "sh"] }] });
+      if (!selected || Array.isArray(selected)) return;
+      const contents = await readTextFile(selected);
+      const name = selected.split(/[\\\\/]/).pop() || "Untitled.txt";
+      setFiles(current => ({ ...current, [name]: contents }));
+      setNativePaths(current => ({ ...current, [name]: selected }));
+      setFileName(name); setPanel("Explorer"); setMessage("Opened " + name);
+    } catch (error) { setMessage("Open failed: " + String(error)); }
+  }
+  async function saveCurrentFile() {
+    if (!isTauri()) { downloadFile(); return; }
+    try {
+      const path = nativePaths[fileName] ?? await saveDialog({ defaultPath: fileName, filters: [{ name: "Text and source files", extensions: [fileName.split(".").pop() || "txt"] }] });
+      if (!path || typeof path !== "string") return;
+      await writeTextFile(path, text);
+      setNativePaths(current => ({ ...current, [fileName]: path }));
+      setMessage("Saved " + fileName);
+    } catch (error) { setMessage("Save failed: " + String(error)); }
+  }
+  function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = draftName.trim().replace(/^\/+/, "");
     if (!name || name.split("/").some(part => !part || part === "." || part === "..")) {
