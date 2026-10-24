@@ -4,3 +4,4 @@ dist/
 .env.*
 !.env.example
 src-tauri/target/
+src-tauri/icons/icon.ico
