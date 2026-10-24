@@ -25,6 +25,10 @@ jobs:
           node-version: 22
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
       - name: Generate Windows application icon
         run: python scripts/generate_icon.py
       - name: Install frontend dependencies
