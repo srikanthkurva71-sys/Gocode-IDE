@@ -85,6 +85,7 @@ export default function App() {
   const [showFind, setShowFind] = useState(false);
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
+  const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
   const text = files[fileName] ?? "";
   const quickOpenEntries = useMemo(() => {
     const names = new Set(Object.keys(files));
@@ -186,9 +187,31 @@ export default function App() {
     };
   }, [showTerminal]);
 
+  function openQuickOpenEntry(name: string) {
+    setQuickOpen(false);
+    if (projectRoot && projectEntries.some(entry => entry.path === name && !entry.is_dir)) {
+      void openProjectEntry(name);
+    } else {
+      setFileName(name);
+      setPanel("Explorer");
+    }
+  }
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
+      if (quickOpen && event.key === "ArrowDown") {
+        event.preventDefault();
+        setQuickOpenSelectedIndex(index => Math.min(index + 1, Math.max(0, quickOpenEntries.length - 1)));
+        return;
+      } else if (quickOpen && event.key === "ArrowUp") {
+        event.preventDefault();
+        setQuickOpenSelectedIndex(index => Math.max(0, index - 1));
+        return;
+      } else if (quickOpen && event.key === "Enter" && quickOpenEntries[quickOpenSelectedIndex]) {
+        event.preventDefault();
+        openQuickOpenEntry(quickOpenEntries[quickOpenSelectedIndex]);
+        return;
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "s") {
         event.preventDefault(); void saveCurrentFile();
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "n") {
         event.preventDefault(); setPanel("Explorer"); setNewFile(true);
@@ -534,11 +557,7 @@ export default function App() {
     {quickOpen && <div className="quick-open-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setQuickOpen(false); }}>
       <section className="quick-open-dialog" role="dialog" aria-modal="true" aria-label="Quick Open">
         <input autoFocus aria-label="Search files by name" placeholder="Type a file name to open…" value={quickOpenQuery} onChange={event => setQuickOpenQuery(event.target.value)} />
-        <div className="quick-open-results">{quickOpenEntries.map(name => <button key={name} onClick={() => {
-          setQuickOpen(false);
-          if (projectRoot && projectEntries.some(entry => entry.path === name && !entry.is_dir)) void openProjectEntry(name);
-          else { setFileName(name); setPanel("Explorer"); }
-        }}><span>◇</span><span>{name}</span></button>)}
+        <div className="quick-open-results">{quickOpenEntries.map(name => <button key={name} className={quickOpenEntries[quickOpenSelectedIndex] === name ? "quick-open-selected" : ""} onMouseEnter={() => setQuickOpenSelectedIndex(quickOpenEntries.indexOf(name))} onClick={() => openQuickOpenEntry(name)}><span>◇</span><span>{name}</span></button>)}
           {!quickOpenEntries.length && <p>No matching files.</p>}
         </div>
         <small>Ctrl+P to open · Esc to close · Showing up to 100 files</small>
