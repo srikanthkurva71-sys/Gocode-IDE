@@ -19,6 +19,7 @@ type TaskResult = { command: string; success: boolean; output: string };
 type ExtensionManifest = { id: string; name: string; version: string; publisher: string; license: string; description: string; capabilities: string[] };
 type EditorDiagnostic = { message: string; lineNumber: number; column: number; severity: number };
 const STORAGE_KEY = "gocode-ide-workspace-v1";
+const PROJECT_ROOT_KEY = "gocode-ide-last-project-root-v1";
 const EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";
 const EDITOR_SETTINGS_KEY = "gocode-ide-editor-settings-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThe desktop prototype includes a native project explorer, local Git actions, a terminal, and fixed build-task adapters. Language-server intelligence, DAP debugging, and executable extension hosting are still in development. Browser preview files remain in browser storage; export a workspace backup to keep a copy.";
@@ -221,6 +222,7 @@ export default function App() {
       if (!selected || Array.isArray(selected)) return;
       const root = await invoke<string>("set_project_root", { path: selected });
       setProjectRoot(root);
+      try { localStorage.setItem(PROJECT_ROOT_KEY, root); } catch { /* Project can still be used for this session. */ }
       await refreshProject();
       setPanel("Explorer");
       setMessage("Opened project: " + root);
@@ -336,8 +338,25 @@ export default function App() {
   }
   useEffect(() => {
     if (!isTauri()) return;
-    void invoke<string | null>("get_project_root").then(root => {
-      if (root) { setProjectRoot(root); void refreshProject(); }
+    void invoke<string | null>("get_project_root").then(async activeRoot => {
+      if (activeRoot) {
+        setProjectRoot(activeRoot);
+        try { localStorage.setItem(PROJECT_ROOT_KEY, activeRoot); } catch { /* Optional convenience only. */ }
+        await refreshProject();
+        return;
+      }
+      // Remember only the last folder path locally; project files are not copied or uploaded.
+      let rememberedRoot = "";
+      try { rememberedRoot = localStorage.getItem(PROJECT_ROOT_KEY) || ""; } catch { /* Storage may be unavailable. */ }
+      if (!rememberedRoot) return;
+      try {
+        const restoredRoot = await invoke<string>("set_project_root", { path: rememberedRoot });
+        setProjectRoot(restoredRoot);
+        await refreshProject();
+        setMessage("Restored project: " + restoredRoot);
+      } catch {
+        setMessage("Your last project folder is unavailable. Choose a project folder to continue.");
+      }
     }).catch(() => undefined);
   }, []);
 
