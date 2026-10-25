@@ -1,6 +1,6 @@
 export type WorkspaceMatch = [name: string, body: string];
 
-const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\\..*)?$/i;
+const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 
 export function isValidRelativeFileName(input: string): boolean {
   const name = input.trim();
