@@ -137,10 +137,13 @@ fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResu
     let mut stack = vec![(root.to_path_buf(), String::new())];
     let mut results = Vec::new();
     let mut inspected_files = 0usize;
+    let mut inspected_entries = 0usize;
     while let Some((directory, prefix)) = stack.pop() {
         let read = fs::read_dir(&directory)
             .map_err(|e| format!("Cannot read project directory: {e}"))?;
         for item in read.flatten() {
+            inspected_entries += 1;
+            if inspected_entries > 10000 { break; }
             let name = item.file_name().to_string_lossy().to_string();
             if matches!(name.as_str(), ".git" | "node_modules" | "target" | "dist" | ".venv" | "__pycache__") {
                 continue;
@@ -182,7 +185,7 @@ fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResu
                 }
             }
         }
-        if inspected_files > 10000 { break; }
+        if inspected_files > 10000 || inspected_entries > 10000 { break; }
     }
     results.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()).then(a.line_number.cmp(&b.line_number)));
     Ok(results)
@@ -251,6 +254,9 @@ fn ensure_safe_parent_directories(root: &Path, parent: &Path) -> Result<(), Stri
 
 #[tauri::command]
 fn write_project_file(state: State<'_, ProjectState>, path: String, content: String) -> Result<(), String> {
+    if content.len() > 2_000_000 {
+        return Err("File is larger than the 2 MB editor limit.".into());
+    }
     let root = project_root(&state)?;
     let target = safe_relative_path(&root, &path)?;
     let parent = target.parent().ok_or_else(|| "Invalid file path.".to_string())?;
