@@ -17,7 +17,7 @@ The development branch currently has:
 - React + TypeScript + Vite frontend with an early editor-style UI.
 - Monaco editor with language-aware syntax highlighting for common programming languages.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
-- Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.\n- Local Git status, diff, stage-all, and commit actions through the installed Git CLI.\n- Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.
+- Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.\n- Local Git status, diff, stage-all, and commit actions through the installed Git CLI.\n- Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.\n- Persistent editor preferences for word wrap and minimap.\n- Importable extension-manifest review registry that validates basic fields and displays publisher/license/capability declarations; it does not execute or install extension code.
 - Branded blue G monogram for the workbench, browser favicon, and Windows application icon.
 - Initial Tauri 2 / Rust desktop-shell scaffolding.
 - Windows MSI GitHub Actions workflow that is being tested.
