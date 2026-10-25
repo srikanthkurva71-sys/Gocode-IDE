@@ -81,6 +81,38 @@ export default function App() {
     (name + "\n" + body).toLowerCase().includes(searchTerm.toLowerCase())), [files, searchTerm]);
 
   useEffect(() => {
+    try { localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(extensions)); }
+    catch { setExtensionError("Could not save extension manifest list in browser storage."); }
+  }, [extensions]);
+
+  useEffect(() => {
+    try { localStorage.setItem(EDITOR_SETTINGS_KEY, JSON.stringify({ wordWrap, minimap })); }
+    catch { /* Settings remain active for this session. */ }
+  }, [wordWrap, minimap]);
+
+  function importExtensionManifest(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (file.size > 64 * 1024) { setExtensionError("Manifest exceeds the 64 KB limit."); return; }
+    void file.text().then(raw => {
+      try {
+        const value: unknown = JSON.parse(raw);
+        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Manifest must be a JSON object.");
+        const m = value as Record<string, unknown>;
+        for (const key of ["id", "name", "version", "publisher", "license", "description"]) {
+          if (typeof m[key] !== "string" || !(m[key] as string).trim()) throw new Error("Missing required text field: " + key);
+        }
+        if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{1,79}$/.test(m.id as string)) throw new Error("Extension id must be 2–80 characters using letters, numbers, dot, underscore, or hyphen.");
+        if (!Array.isArray(m.capabilities) || m.capabilities.some(x => typeof x !== "string" || x.length > 80)) throw new Error("capabilities must be an array of short strings.");
+        const manifest: ExtensionManifest = { id: m.id as string, name: m.name as string, version: m.version as string, publisher: m.publisher as string, license: m.license as string, description: m.description as string, capabilities: m.capabilities as string[] };
+        setExtensions(old => old.some(x => x.id === manifest.id) ? old.map(x => x.id === manifest.id ? manifest : x) : [...old, manifest]);
+        setExtensionError("Manifest added for review. Its code has NOT been installed or executed.");
+      } catch (error) { setExtensionError("Invalid manifest: " + String(error)); }
+    });
+  }
+
+  useEffect(() => {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(files)); }
     catch { setMessage("Browser storage is full. Download your files for backup."); }
   }, [files]);
@@ -353,8 +385,8 @@ export default function App() {
         </> : panel === "Search" ? <div className="empty-panel"><label>Search filenames and contents</label><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search workspace" />{searchTerm && matches.map(([name]) => <button className="search-result" key={name} onClick={() => { setFileName(name); setPanel("Explorer"); }}>{name}<small>Open file</small></button>)}</div>
           : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim()} onClick={() => void commitGitChanges()}>Commit staged changes</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Push/pull and branch switching are not included yet.</p></div>
           : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
-          : panel === "Extensions" ? <div className="empty-panel">Extensions<p>Extension installation and marketplace are not implemented yet.</p></div>
-          : <div className="empty-panel">Settings<p>Workspace buffers are stored locally in this browser. Export a backup to keep a portable copy.</p><p>Gocode IDE is designed to remain free and local-first.</p></div>}
+          : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
+          : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
       </aside>
       <main className="main"><div className="tabs"><div className="tab"><span className="file-icon">◇</span>{fileName}<button onClick={downloadFile} title="Download current file">↓</button></div><div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
