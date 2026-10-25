@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName } from "./lib/workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -42,10 +42,7 @@ function loadWorkspace(): Workspace {
     if (raw) {
       const value: unknown = JSON.parse(raw);
       if (value && typeof value === "object" && !Array.isArray(value)) {
-        const result: Workspace = {};
-        for (const [name, text] of Object.entries(value)) {
-          if (typeof text === "string" && isValidRelativeFileName(name)) result[name] = text;
-        }
+        const result = sanitizeWorkspaceFiles(value);
         if (Object.keys(result).length) return result;
       }
     }
@@ -449,10 +446,7 @@ export default function App() {
         const value: unknown = JSON.parse(String(reader.result));
         if (!value || typeof value !== "object" || !("files" in value) ||
             !value.files || typeof value.files !== "object" || Array.isArray(value.files)) throw new Error("Invalid backup");
-        const result: Workspace = {};
-        for (const [name, body] of Object.entries(value.files)) {
-          if (typeof body === "string" && isValidRelativeFileName(name)) result[name] = body;
-        }
+        const result = sanitizeWorkspaceFiles(value.files);
         if (!Object.keys(result).length) throw new Error("Empty backup");
         setFiles(result); setFileName(Object.keys(result)[0]); setMessage("Workspace backup imported.");
       } catch { setMessage("Could not import that workspace backup."); }
