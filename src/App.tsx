@@ -109,10 +109,8 @@ export default function App() {
     { id: "terminal", label: "Toggle Terminal Panel", run: () => setShowTerminal(value => !value) },
     ...panels.map(item => ({ id: "panel-" + item.name, label: "Show " + item.name, run: () => setPanel(item.name) }))
   ];
-  const filteredCommands = useMemo(() => {
-    const query = commandQuery.trim().toLowerCase();
-    return paletteCommands.filter(command => !query || command.label.toLowerCase().includes(query)).slice(0, 50);
-  }, [commandQuery, projectRoot, fileName, openTabs, showTerminal, panel]);
+  const commandNeedle = commandQuery.trim().toLowerCase();
+  const filteredCommands = paletteCommands.filter(command => !commandNeedle || command.label.toLowerCase().includes(commandNeedle)).slice(0, 50);
   function runPaletteCommand(command: { id: string; label: string; run: () => void }) {
     setCommandPaletteOpen(false);
     command.run();
