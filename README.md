@@ -18,7 +18,7 @@ The development branch currently has:
 - Monaco editor with language-aware syntax highlighting for common programming languages.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
 - Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.
-- Local Git status, diff, stage-all, and commit actions through the installed Git CLI.
+- Local Git status, diff, stage-all, commit, local branch listing/switching, and user-confirmed fast-forward pull/push to `origin` through the installed Git CLI.
 - Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.
 - Persistent editor preferences for word wrap and minimap.
 - Importable extension-manifest review registry that validates basic fields and displays publisher/license/capability declarations; it does not execute or install extension code.
@@ -28,7 +28,7 @@ The development branch currently has:
 - Automated frontend type-check/build workflow.
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
-**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit and initial fixed build-task adapters are implemented, but Git push/pull/branch management, a DAP debugger, language-server integration, and executable extension hosting remain incomplete. The Windows MSI workflow includes a clean-runner install/launch/uninstall smoke test; the latest run passed. Manual testing on supported Windows versions is still required.
+**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit, local branch listing/switching, confirmed fast-forward pull/push, and initial fixed build-task adapters are implemented. A DAP debugger, full language-server integration, and executable extension hosting remain incomplete. The Windows MSI workflow includes a clean-runner install/launch/uninstall smoke test; the latest run passed. Manual testing on supported Windows versions is still required.
 
 ## Architecture and policies
 
