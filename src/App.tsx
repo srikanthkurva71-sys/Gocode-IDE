@@ -72,6 +72,7 @@ export default function App() {
   const [wordWrap, setWordWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").wordWrap === true; } catch { return false; } });
   const [minimap, setMinimap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").minimap === true; } catch { return false; } });
   const [fileName, setFileName] = useState("Welcome.md");
+  const [openTabs, setOpenTabs] = useState<string[]>(["Welcome.md"]);
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
   const [newFolder, setNewFolder] = useState(false);
@@ -99,6 +100,23 @@ export default function App() {
     return filterQuickOpenNames(names, quickOpenQuery, 100);
   }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
+
+  useEffect(() => {
+    setOpenTabs(current => current.includes(fileName) ? current : [...current, fileName]);
+  }, [fileName]);
+
+  function closeEditorTab(name: string) {
+    setOpenTabs(current => {
+      const next = current.filter(tab => tab !== name);
+      if (fileName === name) {
+        const fallback = next[next.length - 1] ?? "Welcome.md";
+        setFileName(fallback);
+        if (!next.length) return ["Welcome.md"];
+      }
+      return next.length ? next : ["Welcome.md"];
+    });
+    setMessage("Closed editor tab " + name + ". The file was not deleted.");
+  }
 
   useEffect(() => {
     if (!pendingCursor || pendingCursor.path !== fileName || !editorRef.current) return;
@@ -228,6 +246,11 @@ export default function App() {
         event.preventDefault();
         openQuickOpenEntry(quickOpenEntries[quickOpenSelectedIndex]);
         return;
+      } else if ((event.ctrlKey || event.metaKey) && event.key === "Tab" && openTabs.length > 1) {
+        event.preventDefault();
+        const currentIndex = openTabs.indexOf(fileName);
+        const nextIndex = (currentIndex + 1) % openTabs.length;
+        setFileName(openTabs[nextIndex]);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "g") {
         event.preventDefault();
         const rawLine = window.prompt("Go to line number:", String(editorRef.current?.getPosition()?.lineNumber ?? 1));
@@ -620,7 +643,7 @@ export default function App() {
           : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
           : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
       </aside>
-      <main className="main"><div className="tabs"><div className="tab"><span className="file-icon">◇</span>{fileName}<button onClick={downloadFile} title="Download current file">↓</button></div><div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
+      <main className="main"><div className="tabs">{openTabs.map(name => <div key={name} className={"tab " + (fileName === name ? "tab-active" : "tab-inactive")} onClick={() => setFileName(name)} title={name}><span className="file-icon">◇</span><span className="tab-name">{name}</span><button className="tab-close" aria-label={"Close " + name} title={"Close " + name} onClick={event => { event.stopPropagation(); closeEditorTab(name); }}>×</button></div>)}<div className="editor-actions"><span>{lineCount} lines</span><button onClick={downloadFile} title="Download current file">↓</button><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
         <div className="editor-wrap"><Editor height="100%" onMount={editor => { editorRef.current = editor; }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: minimap }, fontSize: 13, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => { editorRef.current?.revealLineInCenter(item.lineNumber); editorRef.current?.setPosition({ lineNumber: item.lineNumber, column: item.column }); editorRef.current?.focus(); setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`); }}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
@@ -635,6 +658,6 @@ export default function App() {
         <small>Ctrl+P to open · Esc to close · Showing up to 100 files</small>
       </section>
     </div>}
-    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Save · Ctrl+N New · Ctrl+F Find · Ctrl+P Quick Open</span><span className="push">Gocode IDE · Free and local-first</span></footer>
+    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Save · Ctrl+N New · Ctrl+F Find · Ctrl+P Quick Open · Ctrl+Tab Next tab</span><span className="push">Gocode IDE · Free and local-first</span></footer>
   </div>;
 }
