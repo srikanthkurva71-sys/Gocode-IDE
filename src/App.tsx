@@ -83,7 +83,15 @@ export default function App() {
   const [findText, setFindText] = useState("");
   const [replaceText, setReplaceText] = useState("");
   const [showFind, setShowFind] = useState(false);
+  const [quickOpen, setQuickOpen] = useState(false);
+  const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const text = files[fileName] ?? "";
+  const quickOpenEntries = useMemo(() => {
+    const names = new Set(Object.keys(files));
+    for (const entry of projectEntries) if (!entry.is_dir) names.add(entry.path);
+    const query = quickOpenQuery.trim().toLowerCase();
+    return [...names].filter(name => !query || name.toLowerCase().includes(query)).sort().slice(0, 100);
+  }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
   const matches = useMemo(() => findWorkspaceMatches(files, searchTerm), [files, searchTerm]);
 
@@ -187,6 +195,10 @@ export default function App() {
         event.preventDefault(); setPanel("Explorer"); setNewFile(true);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault(); setPanel("Search"); setShowFind(true);
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
+        event.preventDefault(); setQuickOpenQuery(""); setQuickOpen(true);
+      } else if (event.key === "Escape") {
+        setQuickOpen(false);
       }
     };
     window.addEventListener("keydown", onKeyDown);
@@ -520,6 +532,19 @@ export default function App() {
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`)}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
       </main>
     </div>
-    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Download · Ctrl+N New · Ctrl+F Find</span><span className="push">Gocode IDE · Free and local-first</span></footer>
+    {quickOpen && <div className="quick-open-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setQuickOpen(false); }}>
+      <section className="quick-open-dialog" role="dialog" aria-modal="true" aria-label="Quick Open">
+        <input autoFocus aria-label="Search files by name" placeholder="Type a file name to open…" value={quickOpenQuery} onChange={event => setQuickOpenQuery(event.target.value)} />
+        <div className="quick-open-results">{quickOpenEntries.map(name => <button key={name} onClick={() => {
+          setQuickOpen(false);
+          if (projectRoot && projectEntries.some(entry => entry.path === name && !entry.is_dir)) void openProjectEntry(name);
+          else { setFileName(name); setPanel("Explorer"); }
+        }}><span>◇</span><span>{name}</span></button>)}
+          {!quickOpenEntries.length && <p>No matching files.</p>}
+        </div>
+        <small>Ctrl+P to open · Esc to close · Showing up to 100 files</small>
+      </section>
+    </div>}
+    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Save · Ctrl+N New · Ctrl+F Find · Ctrl+P Quick Open</span><span className="push">Gocode IDE · Free and local-first</span></footer>
   </div>;
 }
