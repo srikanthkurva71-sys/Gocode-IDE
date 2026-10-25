@@ -702,4 +702,24 @@ mod project_path_tests {
     fn rejects_absolute_path() {
         assert!(safe_relative_path(Path::new("/tmp/project"), "/etc/passwd").is_err());
     }
+
+    #[test]
+    fn rejects_cross_platform_invalid_file_names() {
+        let root = Path::new("/tmp/project");
+        for path in [
+            "C:/Windows/secret.txt",
+            "D:relative.txt",
+            "src\\\\main.rs",
+            "src//main.rs",
+            "src/file:name.rs",
+            "CON",
+            "nul.txt",
+            "folder/LPT1.log",
+            "trailing-dot.",
+            "trailing-space ",
+            " leading-space.rs",
+        ] {
+            assert!(safe_relative_path(root, path).is_err(), "accepted invalid path: {path}");
+        }
+    }
 }
