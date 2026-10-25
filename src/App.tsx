@@ -95,6 +95,8 @@ export default function App() {
   const lineCount = useMemo(() => text.split("\n").length, [text]);
   const matches = useMemo(() => findWorkspaceMatches(files, searchTerm), [files, searchTerm]);
 
+  useEffect(() => { setQuickOpenSelectedIndex(0); }, [quickOpenQuery, quickOpen]);
+
   useEffect(() => {
     try { localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(extensions)); }
     catch { setExtensionError("Could not save extension manifest list in browser storage."); }
