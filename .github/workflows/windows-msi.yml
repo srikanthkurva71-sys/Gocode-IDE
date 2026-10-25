@@ -37,7 +37,7 @@ jobs:
       - name: Generate Windows application icon
         run: python scripts/generate_icon.py
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm install
       - name: Run Rust unit tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build Windows MSI
