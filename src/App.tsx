@@ -316,6 +316,13 @@ export default function App() {
     finally { setGitBusy(false); }
   }
   async function runTask(task: string) {
+    const confirmed = window.confirm(
+      "Run this project command?\n\n" + task + "\n\nBuild and test commands execute code from the opened project. Only continue if you trust this project."
+    );
+    if (!confirmed) {
+      setMessage("Project task cancelled.");
+      return;
+    }
     setTaskRunning(true);
     setTaskOutput("Running " + task + " …");
     try {
