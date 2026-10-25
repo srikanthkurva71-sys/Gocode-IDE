@@ -27,6 +27,33 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Audit dependency vulnerabilities
+        shell: bash
+        run: |
+          npm audit --json > npm-audit-report.json || true
+          node --input-type=module <<'NODE'
+          import fs from 'node:fs';
+          const report = JSON.parse(fs.readFileSync('npm-audit-report.json', 'utf8'));
+          const counts = report.metadata?.vulnerabilities ?? {};
+          console.log('Dependency audit summary:', JSON.stringify(counts));
+          for (const [name, item] of Object.entries(report.vulnerabilities ?? {})) {
+            console.log(JSON.stringify({
+              name,
+              severity: item.severity,
+              isDirect: item.isDirect,
+              range: item.range,
+              via: item.via.map(v => typeof v === 'string' ? v : v.name),
+              fixAvailable: item.fixAvailable
+            }));
+          }
+          NODE
+      - name: Upload dependency audit report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: npm-dependency-audit
+          path: npm-audit-report.json
+          if-no-files-found: warn
       - name: Run unit tests
         run: npm test
       - name: Type-check and build
