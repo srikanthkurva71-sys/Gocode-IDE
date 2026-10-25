@@ -19,7 +19,7 @@ type ExtensionManifest = { id: string; name: string; version: string; publisher:
 const STORAGE_KEY = "gocode-ide-workspace-v1";
 const EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";
 const EDITOR_SETTINGS_KEY = "gocode-ide-editor-settings-v1";
-const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThis is an early browser prototype. Files are stored in this browser. Use Download to save a copy. The real desktop filesystem, terminal, compiler, debugger, Git integration, and extension host are not implemented yet.";
+const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThe desktop prototype includes a native project explorer, local Git actions, a terminal, and fixed build-task adapters. Language-server intelligence, DAP debugging, and executable extension hosting are still in development. Browser preview files remain in browser storage; export a workspace backup to keep a copy.";
 function languageForFile(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
   const languages: Record<string, string> = { ts: "typescript", tsx: "typescript", js: "javascript", jsx: "javascript", json: "json", html: "html", css: "css", scss: "scss", md: "markdown", py: "python", rs: "rust", c: "c", h: "c", cpp: "cpp", hpp: "cpp", java: "java", cs: "csharp", go: "go", rb: "ruby", php: "php", xml: "xml", yaml: "yaml", yml: "yaml", sh: "shell", sql: "sql", toml: "ini", ps1: "powershell", bat: "bat" };
