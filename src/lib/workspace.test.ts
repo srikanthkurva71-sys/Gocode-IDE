@@ -9,6 +9,7 @@ describe("isValidRelativeFileName", () => {
 
   it("rejects empty names and traversal segments", () => {
     expect(isValidRelativeFileName("")).toBe(false);
+    expect(isValidRelativeFileName("/root/secret.txt")).toBe(false);
     expect(isValidRelativeFileName("   ")).toBe(false);
     expect(isValidRelativeFileName("../secret.txt")).toBe(false);
     expect(isValidRelativeFileName("src/../secret.txt")).toBe(false);
