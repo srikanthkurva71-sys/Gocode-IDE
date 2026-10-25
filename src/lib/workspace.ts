@@ -51,3 +51,14 @@ export function sanitizeWorkspaceFiles(value: unknown): Record<string, string> {
   }
   return safe;
 }
+
+export function mergeWorkspaceFiles(
+  current: unknown,
+  incoming: unknown,
+): Record<string, string> {
+  // Sanitize both inputs and prioritize newly imported/edited files when the cap is reached.
+  return sanitizeWorkspaceFiles({
+    ...sanitizeWorkspaceFiles(current),
+    ...sanitizeWorkspaceFiles(incoming),
+  });
+}
