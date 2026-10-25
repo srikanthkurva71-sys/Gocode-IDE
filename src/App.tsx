@@ -160,6 +160,15 @@ export default function App() {
     setMessage("Language server stopped.");
   }
 
+  const lspDocumentVersion = useRef(1);
+  useEffect(() => {
+    if (!lspReady || !lspSessionId || !projectRoot) return;
+    const uri = projectFileUri(projectRoot, fileName);
+    const version = ++lspDocumentVersion.current;
+    void invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version }, contentChanges: [{ text }] } } })
+      .catch(error => setMessage("Could not synchronize document with language server: " + String(error)));
+  }, [text, fileName, projectRoot, lspReady, lspSessionId]);
+
   useEffect(() => {
     if (!isTauri()) return;
     let unlistenMessage: (() => void) | undefined;
