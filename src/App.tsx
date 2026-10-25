@@ -383,7 +383,7 @@ export default function App() {
   }
   async function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const name = draftName.trim().replace(/^\/+/, "");
+    const name = draftName.trim();
     if (!isValidRelativeFileName(name)) {
       setMessage("Enter a valid relative file name."); return;
     }
