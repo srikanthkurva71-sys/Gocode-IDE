@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build-msi:
     runs-on: windows-latest
-    timeout-minutes: 15
+    timeout-minutes: 30
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
@@ -37,7 +37,9 @@ jobs:
       - name: Generate Windows application icon
         run: python scripts/generate_icon.py
       - name: Install frontend dependencies
-        run: npm install
+        run: npm ci
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
       - name: Build Windows MSI
         run: npm run tauri -- build
       - name: Install and launch smoke test
