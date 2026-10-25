@@ -297,18 +297,30 @@ export default function App() {
       setMessage("Saved " + fileName);
     } catch (error) { setMessage("Save failed: " + String(error)); }
   }
-  function createFile(event: FormEvent<HTMLFormElement>) {
+  async function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = draftName.trim().replace(/^\/+/, "");
-    if (!name || name.split("/").some(part => !part || part === "." || part === "..")) {
+    if (!name || name.split("/").some(part => !part || part === "." || part === ".." || part.includes("\\"))) {
       setMessage("Enter a valid relative file name."); return;
     }
-    if (Object.prototype.hasOwnProperty.call(files, name)) {
+    if (Object.prototype.hasOwnProperty.call(files, name) || projectEntries.some(entry => entry.path === name)) {
       setMessage("That file already exists."); return;
+    }
+    if (isTauri() && projectRoot) {
+      try {
+        await invoke("write_project_file", { path: name, content: "" });
+        setFiles(current => ({ ...current, [name]: "" }));
+        setFileName(name); setDraftName(""); setNewFile(false); setPanel("Explorer");
+        await refreshProject();
+        setMessage("Created project file " + name);
+        return;
+      } catch (error) {
+        setMessage("Could not create project file: " + String(error)); return;
+      }
     }
     setFiles(current => ({ ...current, [name]: "" }));
     setFileName(name); setDraftName(""); setNewFile(false); setPanel("Explorer");
-    setMessage("Created " + name);
+    setMessage("Created browser-workspace file " + name);
   }
   function removeFile(name: string) {
     if (name === "Welcome.md") { setMessage("The welcome file is kept as a starter."); return; }
