@@ -583,7 +583,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod project_path_tests {
-    use super::{normalize_search_query, safe_relative_path};
+    use super::{ensure_safe_parent_directories, normalize_search_query, safe_relative_path};
     use std::path::Path;
 
     #[test]
@@ -633,6 +633,38 @@ mod project_path_tests {
         fs::remove_dir_all(root).unwrap();
     }
 
+
+    #[test]
+    fn creates_nested_project_directories_safely() {
+        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-parent-test-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        let parent = root.join("src").join("nested");
+        ensure_safe_parent_directories(&root, &parent).unwrap();
+        assert!(parent.is_dir());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn refuses_symlinked_project_parent_directories() {
+        use std::{fs, os::unix::fs::symlink, time::{SystemTime, UNIX_EPOCH}};
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-parent-test-{unique}"));
+        let outside = std::env::temp_dir().join(format!("gocode-outside-test-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::create_dir_all(&outside).unwrap();
+        symlink(&outside, root.join("linked")).unwrap();
+
+        assert!(ensure_safe_parent_directories(&root, &root.join("linked").join("new")).is_err());
+        assert!(!outside.join("new").exists());
+
+        fs::remove_dir_all(root).unwrap();
+        fs::remove_dir_all(outside).unwrap();
+    }
 
     #[test]
     fn accepts_relative_project_file() {
