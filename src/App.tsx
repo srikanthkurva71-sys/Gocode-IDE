@@ -87,8 +87,7 @@ export default function App() {
   const [showFind, setShowFind] = useState(false);
   const text = files[fileName] ?? "";
   const lineCount = useMemo(() => text.split("\n").length, [text]);
-  const matches = useMemo(() => Object.entries(files).filter(([name, body]) =>
-    (name + "\n" + body).toLowerCase().includes(searchTerm.toLowerCase())), [files, searchTerm]);
+  const matches = useMemo(() => findWorkspaceMatches(files, searchTerm), [files, searchTerm]);
 
   useEffect(() => {
     try { localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(extensions)); }
@@ -385,7 +384,7 @@ export default function App() {
   async function createFile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const name = draftName.trim().replace(/^\/+/, "");
-    if (!name || name.split("/").some(part => !part || part === "." || part === ".." || part.includes("\\"))) {
+    if (!isValidRelativeFileName(name)) {
       setMessage("Enter a valid relative file name."); return;
     }
     if (Object.prototype.hasOwnProperty.call(files, name) || projectEntries.some(entry => entry.path === name)) {
