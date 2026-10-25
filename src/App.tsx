@@ -86,6 +86,10 @@ export default function App() {
   const [pendingCursor, setPendingCursor] = useState<{ path: string; line: number } | null>(null);
   const [message, setMessage] = useState("Ready");
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
+  const [lspSessionId, setLspSessionId] = useState<string | null>(null);
+  const [lspReady, setLspReady] = useState(false);
+  const lspDocumentRef = useRef({ fileName, text, projectRoot });
+  lspDocumentRef.current = { fileName, text, projectRoot };
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">("terminal");
   const [searchTerm, setSearchTerm] = useState("");
   const [projectSearchResults, setProjectSearchResults] = useState<ProjectSearchResult[]>([]);
@@ -123,6 +127,82 @@ export default function App() {
     return filterQuickOpenNames(names, quickOpenQuery, 100);
   }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
+
+  function projectFileUri(root: string, relative: string): string {
+    const absolute = (root.replace(/\\\\/g, "/").replace(/\\/$/, "") + "/" + relative.replace(/\\\\/g, "/"));
+    return "file:///" + absolute.split("/").filter(Boolean).map((part, index) => index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)).join("/");
+  }
+
+  async function startLanguageServer() {
+    if (!isTauri()) { setMessage("Language servers are available only in the installed desktop app."); return; }
+    if (!projectRoot) { setMessage("Open a native project folder before starting a language server."); return; }
+    const executable = window.prompt("Enter the full path to a language-server executable you installed and trust:");
+    if (!executable?.trim()) return;
+    const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
+    const args = rawArgs.trim() ? rawArgs.trim().split(/\\s+/) : [];
+    try {
+      if (lspSessionId) await invoke("lsp_stop", { sessionId: lspSessionId });
+      const rootUri = projectFileUri(projectRoot, "").replace(/\\/$/, "");
+      const id = await invoke<string>("lsp_start", { executable: executable.trim(), args, rootUri });
+      setLspSessionId(id);
+      setLspReady(false);
+      setMessage("Language server started; waiting for initialization.");
+    } catch (error) { setMessage("Could not start language server: " + String(error)); }
+  }
+
+  async function stopLanguageServer() {
+    if (!lspSessionId) return;
+    try { await invoke("lsp_stop", { sessionId: lspSessionId }); }
+    catch (error) { setMessage("Language-server stop failed: " + String(error)); }
+    setLspSessionId(null);
+    setLspReady(false);
+    setEditorDiagnostics([]);
+    setMessage("Language server stopped.");
+  }
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    let unlistenMessage: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
+    let unlistenExit: (() => void) | undefined;
+    let active = true;
+    void Promise.all([
+      listen<{ session_id: string; message: Record<string, unknown> }>("lsp-message", async event => {
+        const payload = event.payload;
+        if (!active || payload.session_id !== lspSessionId) return;
+        const message = payload.message;
+        if (message.id === 1 && message.result && !lspReady) {
+          try {
+            await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "initialized", params: {} } });
+            const doc = lspDocumentRef.current;
+            if (doc.projectRoot) {
+              const uri = projectFileUri(doc.projectRoot, doc.fileName);
+              await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: languageForFile(doc.fileName), version: 1, text: doc.text } } } });
+              setLspReady(true);
+              setMessage("Language server initialized for " + doc.fileName + ".");
+            }
+          } catch (error) { setMessage("Language-server initialization failed: " + String(error)); }
+        }
+        if (message.method === "textDocument/publishDiagnostics") {
+          const params = message.params as { uri?: string; diagnostics?: Array<{ message?: string; range?: { start?: { line?: number; character?: number } }; severity?: number }> } | undefined;
+          const doc = lspDocumentRef.current;
+          if (params?.uri && doc.projectRoot && params.uri === projectFileUri(doc.projectRoot, doc.fileName)) {
+            setEditorDiagnostics((params.diagnostics ?? []).map(item => ({ message: item.message ?? "Language-server diagnostic", lineNumber: (item.range?.start?.line ?? 0) + 1, column: (item.range?.start?.character ?? 0) + 1, severity: item.severity === 1 ? 8 : item.severity === 2 ? 4 : 2 })));
+          }
+        }
+      }),
+      listen<{ session_id: string; message: string }>("lsp-error", event => {
+        if (active && event.payload.session_id === lspSessionId) setMessage("Language-server error: " + event.payload.message);
+      }),
+      listen<{ session_id: string }>("lsp-exited", event => {
+        if (active && event.payload.session_id === lspSessionId) { setLspReady(false); setMessage("Language server exited."); }
+      })
+    ]).then(([message, error, exited]) => {
+      if (!active) { message(); error(); exited(); return; }
+      unlistenMessage = message; unlistenError = error; unlistenExit = exited;
+    });
+    return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
+  }, [lspSessionId, lspReady]);
 
   useEffect(() => {
     setOpenTabs(current => current.includes(fileName) ? current : [...current, fileName]);
@@ -731,7 +811,7 @@ export default function App() {
           <div className="workspace-actions"><button onClick={exportWorkspace}>Export workspace backup</button><label className="import-button">Import backup<input type="file" accept=".json,application/json" onChange={importWorkspace} /></label></div>
         </> : panel === "Search" ? <div className="empty-panel"><label>Search workspace buffers</label><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Text to find" />{searchTerm && matches.map(([name]) => <button className="search-result" key={name} onClick={() => { setFileName(name); setPanel("Explorer"); }}>{name}<small>Open buffer</small></button>)}<hr /><strong>Search opened project</strong><p>Searches text files up to 1 MB, skips symlinks and common generated folders, and returns at most 200 matches.</p><button disabled={!projectRoot || projectSearchBusy || !searchTerm.trim()} onClick={() => void searchProject()}>{projectSearchBusy ? "Searching…" : "Search project files"}</button>{projectSearchResults.map((result, index) => <button className="search-result" key={result.path + ":" + result.line_number + ":" + index} onClick={() => { setPendingCursor({ path: result.path, line: result.line_number }); void openProjectEntry(result.path).then(() => setMessage(`Opened ${result.path} at line ${result.line_number}.`)); }}><span>{result.path}:{result.line_number}</span><small>{result.snippet}</small></button>)}</div>
           : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot || gitBusy} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot || gitBusy} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim() || gitBusy} onClick={() => void commitGitChanges()}>Commit staged changes</button><div className="git-branch-controls"><label>Local branch<select aria-label="Local branch" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} disabled={!projectRoot || gitBusy}>{gitBranches.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></label><button disabled={!projectRoot || !selectedBranch || gitBusy || selectedBranch === gitInfo?.branch} onClick={() => void checkoutGitBranch()}>Switch branch</button></div><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("pull")}>Pull (fast-forward only)</button><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("push")}>Push current branch to origin</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Pull/push require a configured remote and may use the credentials configured in Git. Remote sync asks for confirmation; branch switching only targets existing local branches.</p></div>
-          : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p><button disabled={!projectRoot || taskRunning || !projectEntries.some(entry => entry.path === fileName && !entry.is_dir)} onClick={() => void runCurrentSourceFile()}>Run Current File (Python / JS / Go)</button>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
+          : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><section className="extension-card"><strong>Language Server Protocol</strong><p>{lspSessionId ? (lspReady ? "Connected and initialized." : "Starting / initializing…") : "No language server connected."} Configure a local language-server executable you installed and trust. The IDE will launch it only after you press Start.</p><button disabled={!projectRoot || !isTauri()} onClick={() => void startLanguageServer()}>Start Language Server…</button><button disabled={!lspSessionId} onClick={() => void stopLanguageServer()}>Stop Language Server</button></section><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p><button disabled={!projectRoot || taskRunning || !projectEntries.some(entry => entry.path === fileName && !entry.is_dir)} onClick={() => void runCurrentSourceFile()}>Run Current File (Python / JS / Go)</button>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
           : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
           : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><label className="setting-row">Editor font size <input aria-label="Editor font size" type="number" min={10} max={24} value={fontSize} onChange={event => setFontSize(clampEditorFontSize(Number(event.target.value)))} /></label><p>Use Ctrl+= / Ctrl+- to change font size and Ctrl+0 to reset it. The size is saved with editor preferences.</p><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
       </aside>
