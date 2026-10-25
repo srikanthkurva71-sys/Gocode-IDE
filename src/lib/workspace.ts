@@ -4,6 +4,10 @@ export const MAX_WORKSPACE_FILES = 500;
 export const MAX_WORKSPACE_FILE_CHARS = 2_000_000;
 export const MAX_WORKSPACE_BACKUP_BYTES = 20 * 1024 * 1024;
 
+export function isWithinTextImportLimit(sizeBytes: number): boolean {
+  return Number.isFinite(sizeBytes) && sizeBytes >= 0 && sizeBytes <= MAX_WORKSPACE_FILE_CHARS;
+}
+
 const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 
 export function isValidRelativeFileName(input: string): boolean {
