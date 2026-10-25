@@ -13,6 +13,11 @@ describe("isValidRelativeFileName", () => {
     expect(isValidRelativeFileName("C:/Windows/secret.txt")).toBe(false);
     expect(isValidRelativeFileName("D:relative.txt")).toBe(false);
     expect(isValidRelativeFileName("src/file:name.ts")).toBe(false);
+    expect(isValidRelativeFileName("CON")).toBe(false);
+    expect(isValidRelativeFileName("nul.txt")).toBe(false);
+    expect(isValidRelativeFileName("folder/LPT1.log")).toBe(false);
+    expect(isValidRelativeFileName("trailing-dot.")).toBe(false);
+    expect(isValidRelativeFileName("trailing-space ")).toBe(false);
     expect(isValidRelativeFileName("   ")).toBe(false);
     expect(isValidRelativeFileName("../secret.txt")).toBe(false);
     expect(isValidRelativeFileName("src/../secret.txt")).toBe(false);
