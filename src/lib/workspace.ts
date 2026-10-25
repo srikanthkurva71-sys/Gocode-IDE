@@ -1,5 +1,9 @@
 export type WorkspaceMatch = [name: string, body: string];
 
+export const MAX_WORKSPACE_FILES = 500;
+export const MAX_WORKSPACE_FILE_CHARS = 2_000_000;
+export const MAX_WORKSPACE_BACKUP_BYTES = 20 * 1024 * 1024;
+
 const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 
 export function isValidRelativeFileName(input: string): boolean {
@@ -38,7 +42,8 @@ export function sanitizeWorkspaceFiles(value: unknown): Record<string, string> {
   if (!value || typeof value !== "object" || Array.isArray(value)) return {};
   const safe: Record<string, string> = {};
   for (const [name, body] of Object.entries(value)) {
-    if (typeof body === "string" && isValidRelativeFileName(name)) safe[name] = body;
+    if (Object.keys(safe).length >= MAX_WORKSPACE_FILES) break;
+    if (typeof body === "string" && body.length <= MAX_WORKSPACE_FILE_CHARS && isValidRelativeFileName(name)) safe[name] = body;
   }
   return safe;
 }
