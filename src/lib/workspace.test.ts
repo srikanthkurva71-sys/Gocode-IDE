@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, mergeWorkspaceFiles, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -107,5 +107,23 @@ describe("sanitizeWorkspaceFiles", () => {
     const input: Record<string, string> = {};
     for (let index = 0; index < MAX_WORKSPACE_FILES + 10; index++) input[`file-${index}.txt`] = "ok";
     expect(Object.keys(sanitizeWorkspaceFiles(input))).toHaveLength(MAX_WORKSPACE_FILES);
+  });
+});
+
+describe("mergeWorkspaceFiles", () => {
+  it("prioritizes incoming files when the workspace file cap is reached", () => {
+    const current: Record<string, string> = {};
+    for (let index = 0; index < MAX_WORKSPACE_FILES; index++) current[`old-${index}.txt`] = "old";
+    const merged = mergeWorkspaceFiles(current, { "new-file.ts": "new" });
+    expect(Object.keys(merged)).toHaveLength(MAX_WORKSPACE_FILES);
+    expect(merged["new-file.ts"]).toBe("new");
+    expect(merged["old-0.txt"]).toBeUndefined();
+  });
+
+  it("sanitizes both existing and incoming file records", () => {
+    expect(mergeWorkspaceFiles(
+      { "safe.txt": "keep", "../bad.txt": "reject" },
+      { "new.txt": "added", "C:/outside.txt": "reject" },
+    )).toEqual({ "safe.txt": "keep", "new.txt": "added" });
   });
 });
