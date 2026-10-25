@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./lib/workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -434,7 +434,7 @@ export default function App() {
       remaining -= 1;
       if (remaining !== 0) return;
       const safeImported = sanitizeWorkspaceFiles(imported);
-      const merged = sanitizeWorkspaceFiles({ ...files, ...safeImported });
+      const merged = mergeWorkspaceFiles(files, safeImported);
       setFiles(merged);
       const importedNames = Object.keys(safeImported).filter(name =>
         Object.prototype.hasOwnProperty.call(merged, name) && merged[name] === safeImported[name]
