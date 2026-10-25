@@ -16,7 +16,9 @@ type ProjectEntry = { path: string; is_dir: boolean; size: number };
 type GitResult = { available: boolean; output: string; branch: string; dirty: boolean };
 type TaskResult = { command: string; success: boolean; output: string };
 type ExtensionManifest = { id: string; name: string; version: string; publisher: string; license: string; description: string; capabilities: string[] };
-const STORAGE_KEY = "gocode-ide-workspace-v1";\nconst EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";\nconst EDITOR_SETTINGS_KEY = "gocode-ide-editor-settings-v1";
+const STORAGE_KEY = "gocode-ide-workspace-v1";
+const EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";
+const EDITOR_SETTINGS_KEY = "gocode-ide-editor-settings-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThis is an early browser prototype. Files are stored in this browser. Use Download to save a copy. The real desktop filesystem, terminal, compiler, debugger, Git integration, and extension host are not implemented yet.";
 function languageForFile(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
