@@ -329,7 +329,7 @@ export default function App() {
     setTaskOutput("Running " + task + " …");
     try {
       const result = await invoke<TaskResult>("run_project_task", { task });
-      setTaskOutput((result.success ? "SUCCESS: " : "FAILED: ") + result.command + "\\n\\n" + result.output);
+      setTaskOutput((result.success ? "SUCCESS: " : "FAILED: ") + result.command + "\n\n" + result.output);
       setMessage(result.success ? task + " completed." : task + " failed.");
     } catch (error) {
       setTaskOutput("Could not run task: " + String(error));
