@@ -56,7 +56,7 @@ export function mergeWorkspaceFiles(
   current: unknown,
   incoming: unknown,
 ): Record<string, string> {
-  // Sanitize inputs and reserve the limited workspace slots for incoming files first.
+  // Incoming files win name conflicts; retain the newest existing entries when capacity is limited.
   const safeIncoming = sanitizeWorkspaceFiles(incoming);
   const safeCurrent = sanitizeWorkspaceFiles(current);
   const merged: Record<string, string> = {};
@@ -65,9 +65,13 @@ export function mergeWorkspaceFiles(
     merged[name] = body;
   }
 
-  for (const [name, body] of Object.entries(safeCurrent)) {
-    if (Object.prototype.hasOwnProperty.call(merged, name)) continue;
-    if (Object.keys(merged).length >= MAX_WORKSPACE_FILES) break;
+  const remainingCurrent = Object.entries(safeCurrent)
+    .filter(([name]) => !Object.prototype.hasOwnProperty.call(merged, name));
+  const availableSlots = Math.max(0, MAX_WORKSPACE_FILES - Object.keys(merged).length);
+  const firstCurrentIndex = Math.max(0, remainingCurrent.length - availableSlots);
+
+  for (let index = firstCurrentIndex; index < remainingCurrent.length; index++) {
+    const [name, body] = remainingCurrent[index];
     merged[name] = body;
   }
 
