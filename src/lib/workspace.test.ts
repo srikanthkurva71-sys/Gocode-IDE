@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, sanitizeWorkspaceFiles } from "./workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -79,5 +79,18 @@ describe("sanitizeWorkspaceFiles", () => {
     expect(sanitizeWorkspaceFiles(null)).toEqual({});
     expect(sanitizeWorkspaceFiles("not files")).toEqual({});
     expect(sanitizeWorkspaceFiles(["one", "two"])).toEqual({});
+  });
+
+  it("skips individual files that exceed the safe size limit", () => {
+    expect(sanitizeWorkspaceFiles({
+      "small.txt": "ok",
+      "large.txt": "x".repeat(MAX_WORKSPACE_FILE_CHARS + 1),
+    })).toEqual({ "small.txt": "ok" });
+  });
+
+  it("caps the number of imported workspace files", () => {
+    const input: Record<string, string> = {};
+    for (let index = 0; index < MAX_WORKSPACE_FILES + 10; index++) input[`file-${index}.txt`] = "ok";
+    expect(Object.keys(sanitizeWorkspaceFiles(input))).toHaveLength(MAX_WORKSPACE_FILES);
   });
 });
