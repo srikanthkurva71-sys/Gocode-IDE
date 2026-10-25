@@ -391,6 +391,30 @@ fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, S
 }
 
 #[tauri::command]
+fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskResult, String> {
+    let root = project_root(&state)?;
+    let relative = safe_relative_path(&root, &path)?;
+    let metadata = fs::symlink_metadata(&relative).map_err(|e| format!("Could not inspect source file: {e}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() { return Err("Only regular, non-symlink source files can be run.".into()); }
+    let canonical_root = root.canonicalize().map_err(|e| format!("Could not resolve project folder: {e}"))?;
+    let canonical_file = relative.canonicalize().map_err(|e| format!("Could not resolve source file: {e}"))?;
+    if !canonical_file.starts_with(&canonical_root) { return Err("Source file must stay inside the opened project.".into()); }
+    let extension = canonical_file.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let (program, args): (&str, Vec<String>) = match extension.as_str() {
+        "py" => ("python", vec![canonical_file.to_string_lossy().into_owned()]),
+        "js" | "mjs" | "cjs" => ("node", vec![canonical_file.to_string_lossy().into_owned()]),
+        "go" => ("go", vec!["run".into(), canonical_file.to_string_lossy().into_owned()]),
+        _ => return Err("Run File supports Python, JavaScript, and Go files when their runtimes are installed.".into()),
+    };
+    let output = Command::new(program).args(&args).current_dir(&canonical_root).output()
+        .map_err(|e| format!("Could not start {program}. Install the runtime and ensure it is on PATH: {e}"))?;
+    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
+    text.push_str(&String::from_utf8_lossy(&output.stderr));
+    if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
+    Ok(TaskResult { command: format!("{program} {}", args.join(" ")), success: output.status.success(), output: text })
+}
+
+#[tauri::command]
 fn run_project_task(state: State<'_, ProjectState>, task: String) -> Result<TaskResult, String> {
     let root = project_root(&state)?;
     let allowed: &[(&str, &str, &[&str])] = &[
@@ -618,7 +642,8 @@ pub fn run() {
             git_pull_ff_only,
             git_push_current_branch,
             detect_project_tasks,
-            run_project_task
+            run_project_task,
+            run_source_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running Gocode IDE");
