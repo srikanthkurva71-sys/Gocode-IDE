@@ -96,7 +96,29 @@ export default function App() {
   const [quickOpen, setQuickOpen] = useState(false);
   const [quickOpenQuery, setQuickOpenQuery] = useState("");
   const [quickOpenSelectedIndex, setQuickOpenSelectedIndex] = useState(0);
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandQuery, setCommandQuery] = useState("");
+  const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const text = files[fileName] ?? "";
+  const paletteCommands: { id: string; label: string; run: () => void }[] = [
+    { id: "open-project", label: "Open Project Folder", run: () => void openProjectFolder() },
+    { id: "save-file", label: "Save Current File", run: () => void saveCurrentFile() },
+    { id: "save-all", label: "Save All Open Project Files", run: () => void saveAllOpenProjectFiles() },
+    { id: "quick-open", label: "Quick Open File", run: () => { setQuickOpenQuery(""); setQuickOpen(true); } },
+    { id: "find", label: "Find / Replace", run: () => { setPanel("Search"); setShowFind(true); } },
+    { id: "terminal", label: "Toggle Terminal Panel", run: () => setShowTerminal(value => !value) },
+    ...panels.map(item => ({ id: "panel-" + item.name, label: "Show " + item.name, run: () => setPanel(item.name) }))
+  ];
+  const filteredCommands = useMemo(() => {
+    const query = commandQuery.trim().toLowerCase();
+    return paletteCommands.filter(command => !query || command.label.toLowerCase().includes(query)).slice(0, 50);
+  }, [commandQuery, projectRoot, fileName, openTabs, showTerminal, panel]);
+  function runPaletteCommand(command: { id: string; label: string; run: () => void }) {
+    setCommandPaletteOpen(false);
+    command.run();
+    setMessage("Command: " + command.label);
+  }
+
   const quickOpenEntries = useMemo(() => {
     const names = new Set(Object.keys(files));
     for (const entry of projectEntries) if (!entry.is_dir) names.add(entry.path);
@@ -137,6 +159,7 @@ export default function App() {
   const matches = useMemo(() => findWorkspaceMatches(files, searchTerm), [files, searchTerm]);
 
   useEffect(() => { setQuickOpenSelectedIndex(0); }, [quickOpenQuery, quickOpen]);
+  useEffect(() => { setCommandSelectedIndex(0); }, [commandQuery, commandPaletteOpen]);
 
   useEffect(() => {
     try { localStorage.setItem(EXTENSIONS_KEY, JSON.stringify(extensions)); }
@@ -242,7 +265,15 @@ export default function App() {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (quickOpen && event.key === "ArrowDown") {
+      if (commandPaletteOpen && event.key === "ArrowDown") {
+        event.preventDefault(); setCommandSelectedIndex(index => Math.min(index + 1, Math.max(0, filteredCommands.length - 1))); return;
+      } else if (commandPaletteOpen && event.key === "ArrowUp") {
+        event.preventDefault(); setCommandSelectedIndex(index => Math.max(0, index - 1)); return;
+      } else if (commandPaletteOpen && event.key === "Enter" && filteredCommands[commandSelectedIndex]) {
+        event.preventDefault(); runPaletteCommand(filteredCommands[commandSelectedIndex]); return;
+      } else if (commandPaletteOpen && event.key === "Escape") {
+        setCommandPaletteOpen(false); return;
+      } else if (quickOpen && event.key === "ArrowDown") {
         event.preventDefault();
         setQuickOpenSelectedIndex(index => Math.min(index + 1, Math.max(0, quickOpenEntries.length - 1)));
         return;
@@ -287,6 +318,8 @@ export default function App() {
         event.preventDefault(); setPanel("Explorer"); setNewFile(true);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "f") {
         event.preventDefault(); setPanel("Search"); setShowFind(true);
+      } else if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "p") {
+        event.preventDefault(); setCommandQuery(""); setCommandPaletteOpen(true);
       } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "p") {
         event.preventDefault(); setQuickOpenQuery(""); setQuickOpen(true);
       } else if (event.key === "Escape") {
@@ -710,6 +743,14 @@ export default function App() {
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => { editorRef.current?.revealLineInCenter(item.lineNumber); editorRef.current?.setPosition({ lineNumber: item.lineNumber, column: item.column }); editorRef.current?.focus(); setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`); }}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
       </main>
     </div>
+    {commandPaletteOpen && <div className="quick-open-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setCommandPaletteOpen(false); }}>
+      <section className="quick-open-dialog command-palette" role="dialog" aria-modal="true" aria-label="Command Palette">
+        <input autoFocus aria-label="Search commands" placeholder="Type a command…" value={commandQuery} onChange={event => setCommandQuery(event.target.value)} />
+        <div className="quick-open-results">{filteredCommands.map((command, index) => <button key={command.id} className={index === commandSelectedIndex ? "quick-open-selected" : ""} onMouseEnter={() => setCommandSelectedIndex(index)} onClick={() => runPaletteCommand(command)}><span>›</span><span>{command.label}</span></button>)}
+          {!filteredCommands.length && <p>No matching commands.</p>}
+        </div><small>Ctrl+Shift+P to open · ↑ ↓ to navigate · Enter to run · Esc to close</small>
+      </section>
+    </div>}
     {quickOpen && <div className="quick-open-backdrop" role="presentation" onMouseDown={event => { if (event.target === event.currentTarget) setQuickOpen(false); }}>
       <section className="quick-open-dialog" role="dialog" aria-modal="true" aria-label="Quick Open">
         <input autoFocus aria-label="Search files by name" placeholder="Type a file name to open…" value={quickOpenQuery} onChange={event => setQuickOpenQuery(event.target.value)} />
