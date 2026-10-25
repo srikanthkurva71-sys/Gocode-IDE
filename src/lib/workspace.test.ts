@@ -118,7 +118,7 @@ describe("mergeWorkspaceFiles", () => {
     expect(Object.keys(merged)).toHaveLength(MAX_WORKSPACE_FILES);
     expect(merged["new-file.ts"]).toBe("new");
     expect(merged["old-0.txt"]).toBeUndefined();
-    expect(merged[`old-${MAX_WORKSPACE_FILES - 1}.txt"]).toBe("old");
+    expect(merged[`old-${MAX_WORKSPACE_FILES - 1}.txt`]).toBe("old");
   });
 
   it("incoming contents replace existing contents for the same valid filename", () => {
