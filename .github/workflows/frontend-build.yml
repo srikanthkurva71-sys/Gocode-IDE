@@ -7,7 +7,7 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 concurrency:
   group: frontend-${{ github.ref }}
@@ -20,28 +20,13 @@ jobs:
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          persist-credentials: true
+          persist-credentials: false
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: 20
       - name: Install dependencies
-        run: npm install
-      - name: Apply compatible dependency security updates
-        run: npm audit fix
-      - name: Commit generated npm lockfile on development branch
-        if: github.event_name == 'push' && github.ref == 'refs/heads/work/starter-scaffold'
-        shell: bash
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add package-lock.json
-          if git diff --cached --quiet; then
-            echo "npm lockfile is already up to date."
-            exit 0
-          fi
-          git commit -m "chore: add reproducible npm lockfile"
-          git push
+        run: npm ci
       - name: Audit dependency vulnerabilities
         shell: bash
         run: |
@@ -71,6 +56,8 @@ jobs:
             npm-audit-report.json
             package-lock.json
           if-no-files-found: warn
+      - name: Fail on remaining dependency advisories
+        run: npm audit --audit-level=low
       - name: Run unit tests
         run: npm test
       - name: Type-check and build
