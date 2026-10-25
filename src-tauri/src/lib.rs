@@ -102,19 +102,24 @@ struct ProjectSearchResult {
     snippet: String,
 }
 
+fn normalize_search_query(query: &str) -> Result<String, String> {
+    let normalized = query.trim().to_lowercase();
+    if normalized.is_empty() {
+        return Err("Enter text to search for.".into());
+    }
+    if normalized.len() > 200 {
+        return Err("Search text must be 200 characters or fewer.".into());
+    }
+    Ok(normalized)
+}
+
 #[tauri::command]
 fn search_project_files(
     state: State<'_, ProjectState>,
     query: String,
 ) -> Result<Vec<ProjectSearchResult>, String> {
     let root = project_root(&state)?;
-    let query = query.trim().to_lowercase();
-    if query.is_empty() {
-        return Err("Enter text to search for.".into());
-    }
-    if query.len() > 200 {
-        return Err("Search text must be 200 characters or fewer.".into());
-    }
+    let query = normalize_search_query(&query)?;
 
     let mut stack = vec![(root.clone(), String::new())];
     let mut results = Vec::new();
@@ -538,8 +543,24 @@ pub fn run() {
 
 #[cfg(test)]
 mod project_path_tests {
-    use super::safe_relative_path;
+    use super::{normalize_search_query, safe_relative_path};
     use std::path::Path;
+
+    #[test]
+    fn normalizes_search_query_case_and_whitespace() {
+        assert_eq!(normalize_search_query("  HeLLo  ").unwrap(), "hello");
+    }
+
+    #[test]
+    fn rejects_empty_search_query() {
+        assert!(normalize_search_query("   ").is_err());
+    }
+
+    #[test]
+    fn rejects_search_query_over_limit() {
+        assert!(normalize_search_query(&"x".repeat(201)).is_err());
+        assert!(normalize_search_query(&"x".repeat(200)).is_ok());
+    }
 
     #[test]
     fn accepts_relative_project_file() {
