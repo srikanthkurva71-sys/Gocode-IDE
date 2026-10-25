@@ -333,6 +333,7 @@ export default function App() {
     } catch (error) { setMessage("Open project failed: " + String(error)); }
   }
   async function openProjectEntry(path: string) {
+    if (isProjectTabDirty(path) && !window.confirm("\u201c" + path + "\u201d has unsaved changes. Reload from disk and discard them?")) return;
     try {
       const contents = await invoke<string>("read_project_file", { path });
       setFiles(current => ({ ...current, [path]: contents }));
