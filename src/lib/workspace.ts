@@ -3,8 +3,9 @@ export type WorkspaceMatch = [name: string, body: string];
 const WINDOWS_RESERVED_NAMES = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 
 export function isValidRelativeFileName(input: string): boolean {
-  const name = input.trim();
-  if (!name || /^[a-zA-Z]:/.test(name)) return false;
+  if (!input || !input.trim() || input !== input.trim()) return false;
+  const name = input;
+  if (/^[a-zA-Z]:/.test(name)) return false;
 
   return !name.split("/").some(part => {
     const windowsComparable = part.replace(/[. ]+$/, "");
