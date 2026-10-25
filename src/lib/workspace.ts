@@ -3,7 +3,8 @@ export type WorkspaceMatch = [name: string, body: string];
 export function isValidRelativeFileName(input: string): boolean {
   const name = input.trim();
   return Boolean(name) &&
-    !name.split("/").some(part => !part || part === "." || part === ".." || part.includes("\\"));
+    !/^[a-zA-Z]:/.test(name) &&
+    !name.split("/").some(part => !part || part === "." || part === ".." || part.includes("\\") || part.includes(":"));
 }
 
 export function findWorkspaceMatches(
