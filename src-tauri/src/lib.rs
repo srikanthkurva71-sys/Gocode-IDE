@@ -389,3 +389,26 @@ pub fn run() {
         .run(tauri::generate_context!())
         .expect("error while running Gocode IDE");
 }
+
+#[cfg(test)]
+mod project_path_tests {
+    use super::safe_relative_path;
+    use std::path::Path;
+
+    #[test]
+    fn accepts_relative_project_file() {
+        let result = safe_relative_path(Path::new("/tmp/project"), "src/main.rs").unwrap();
+        assert!(result.ends_with("src/main.rs"));
+    }
+
+    #[test]
+    fn rejects_parent_traversal() {
+        assert!(safe_relative_path(Path::new("/tmp/project"), "../outside.txt").is_err());
+        assert!(safe_relative_path(Path::new("/tmp/project"), "src/../../outside.txt").is_err());
+    }
+
+    #[test]
+    fn rejects_absolute_path() {
+        assert!(safe_relative_path(Path::new("/tmp/project"), "/etc/passwd").is_err());
+    }
+}
