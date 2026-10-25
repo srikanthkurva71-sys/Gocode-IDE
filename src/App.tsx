@@ -73,6 +73,8 @@ export default function App() {
   const [fileName, setFileName] = useState("Welcome.md");
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
+  const [newFolder, setNewFolder] = useState(false);
+  const [draftFolderName, setDraftFolderName] = useState("");
   const [showTerminal, setShowTerminal] = useState(true);
   const terminalHost = useRef<HTMLDivElement | null>(null);
   const [message, setMessage] = useState("Ready");
@@ -451,6 +453,38 @@ export default function App() {
     setFileName(name); setDraftName(""); setNewFile(false); setPanel("Explorer");
     setMessage("Created browser-workspace file " + name);
   }
+  async function createProjectFolder(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const path = draftFolderName.trim();
+    if (!projectRoot || !isTauri()) {
+      setMessage("Open a project folder in the desktop app before creating folders.");
+      return;
+    }
+    if (!isValidRelativeFileName(path)) {
+      setMessage("Enter a valid relative folder path.");
+      return;
+    }
+    if (projectEntries.some(entry => entry.path === path) || Object.prototype.hasOwnProperty.call(files, path)) {
+      setMessage("A file or folder already exists at that path.");
+      return;
+    }
+    try {
+      await invoke("create_project_directory", { path });
+      setCollapsedProjectDirs(current => {
+        const next = { ...current };
+        const parts = path.split("/");
+        for (let index = 1; index < parts.length; index += 1) delete next[parts.slice(0, index).join("/")];
+        return next;
+      });
+      setDraftFolderName("");
+      setNewFolder(false);
+      await refreshProject();
+      setMessage("Created project folder " + path);
+    } catch (error) {
+      setMessage("Could not create project folder: " + String(error));
+    }
+  }
+
   function removeFile(name: string) {
     if (name === "Welcome.md") { setMessage("The welcome file is kept as a starter."); return; }
     setFiles(current => {
@@ -548,12 +582,12 @@ export default function App() {
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
         {panel === "Explorer" ? <>
-          <div className="tree-heading">⌄　{projectRoot ? projectRoot.split(/[\\\\/]/).pop() : "MY-PROJECT"} <button title="New file" onClick={() => setNewFile(true)}>＋</button></div>{projectRoot && <div className="project-root-label" title={projectRoot}>{projectRoot}</div>}{projectRoot && projectEntries.filter(isProjectEntryVisible).map(entry => <div className={"file-row project-row " + (fileName === entry.path ? "selected" : "")} key={entry.path} style={{ paddingLeft: Math.min(7 + (entry.path.split("/").length - 1) * 12, 60) }}><button className="file-open" aria-expanded={entry.is_dir ? !collapsedProjectDirs[entry.path] : undefined} onClick={() => entry.is_dir ? toggleProjectDirectory(entry.path) : void openProjectEntry(entry.path)}><span className="file-icon">{entry.is_dir ? (collapsedProjectDirs[entry.path] ? "▸" : "▾") : "◇"}</span>{entry.path.split("/").pop()}</button></div>)}
+          <div className="tree-heading">⌄　{projectRoot ? projectRoot.split(/[\\\\/]/).pop() : "MY-PROJECT"} <button title="New folder" disabled={!projectRoot || !isTauri()} onClick={() => { setNewFolder(true); setNewFile(false); }}>▱</button><button title="New file" onClick={() => { setNewFile(true); setNewFolder(false); }}>＋</button></div>{projectRoot && <div className="project-root-label" title={projectRoot}>{projectRoot}</div>}{projectRoot && projectEntries.filter(isProjectEntryVisible).map(entry => <div className={"file-row project-row " + (fileName === entry.path ? "selected" : "")} key={entry.path} style={{ paddingLeft: Math.min(7 + (entry.path.split("/").length - 1) * 12, 60) }}><button className="file-open" aria-expanded={entry.is_dir ? !collapsedProjectDirs[entry.path] : undefined} onClick={() => entry.is_dir ? toggleProjectDirectory(entry.path) : void openProjectEntry(entry.path)}><span className="file-icon">{entry.is_dir ? (collapsedProjectDirs[entry.path] ? "▸" : "▾") : "◇"}</span>{entry.path.split("/").pop()}</button></div>)}
           {Object.keys(files).sort().map(name => <div className={"file-row " + (fileName === name ? "selected" : "")} key={name}>
             <button className="file-open" onClick={() => setFileName(name)}><span className="file-icon">◇</span>{name}</button>
             <button className="file-delete" title={"Remove " + name} onClick={() => removeFile(name)}>×</button>
           </div>)}
-          {newFile && <form onSubmit={createFile}><input autoFocus placeholder="filename.ext" value={draftName} onChange={e => setDraftName(e.target.value)} /><div className="form-actions"><button type="submit">Create</button><button type="button" onClick={() => setNewFile(false)}>Cancel</button></div></form>}
+          {newFile && <form onSubmit={createFile}><input autoFocus placeholder="filename.ext" value={draftName} onChange={e => setDraftName(e.target.value)} /><div className="form-actions"><button type="submit">Create</button><button type="button" onClick={() => setNewFile(false)}>Cancel</button></div></form>{newFolder && <form onSubmit={createProjectFolder}><input autoFocus placeholder="folder-name or parent/child" aria-label="Folder path" value={draftFolderName} onChange={e => setDraftFolderName(e.target.value)} /><div className="form-actions"><button type="submit">Create folder</button><button type="button" onClick={() => setNewFolder(false)}>Cancel</button></div></form>}}
           <div className="workspace-actions"><button onClick={exportWorkspace}>Export workspace backup</button><label className="import-button">Import backup<input type="file" accept=".json,application/json" onChange={importWorkspace} /></label></div>
         </> : panel === "Search" ? <div className="empty-panel"><label>Search workspace buffers</label><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Text to find" />{searchTerm && matches.map(([name]) => <button className="search-result" key={name} onClick={() => { setFileName(name); setPanel("Explorer"); }}>{name}<small>Open buffer</small></button>)}<hr /><strong>Search opened project</strong><p>Searches text files up to 1 MB, skips symlinks and common generated folders, and returns at most 200 matches.</p><button disabled={!projectRoot || projectSearchBusy || !searchTerm.trim()} onClick={() => void searchProject()}>{projectSearchBusy ? "Searching…" : "Search project files"}</button>{projectSearchResults.map((result, index) => <button className="search-result" key={result.path + ":" + result.line_number + ":" + index} onClick={() => { void openProjectEntry(result.path).then(() => setMessage(`Opened ${result.path} (match on line ${result.line_number}).`)); }}><span>{result.path}:{result.line_number}</span><small>{result.snippet}</small></button>)}</div>
           : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot || gitBusy} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot || gitBusy} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim() || gitBusy} onClick={() => void commitGitChanges()}>Commit staged changes</button><div className="git-branch-controls"><label>Local branch<select aria-label="Local branch" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} disabled={!projectRoot || gitBusy}>{gitBranches.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></label><button disabled={!projectRoot || !selectedBranch || gitBusy || selectedBranch === gitInfo?.branch} onClick={() => void checkoutGitBranch()}>Switch branch</button></div><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("pull")}>Pull (fast-forward only)</button><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("push")}>Push current branch to origin</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Pull/push require a configured remote and may use the credentials configured in Git. Remote sync asks for confirmation; branch switching only targets existing local branches.</p></div>
