@@ -60,7 +60,11 @@ export default function App() {
   const [commitMessage, setCommitMessage] = useState("");
   const [tasks, setTasks] = useState<string[]>([]);
   const [taskOutput, setTaskOutput] = useState("");
-  const [taskRunning, setTaskRunning] = useState(false);\n  const [extensions, setExtensions] = useState<ExtensionManifest[]>(() => { try { const v = JSON.parse(localStorage.getItem(EXTENSIONS_KEY) || "[]"); return Array.isArray(v) ? v.filter(x => x && typeof x.id === "string" && typeof x.name === "string") : []; } catch { return []; } });\n  const [extensionError, setExtensionError] = useState("");\n  const [wordWrap, setWordWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").wordWrap === true; } catch { return false; } });\n  const [minimap, setMinimap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").minimap === true; } catch { return false; } });
+  const [taskRunning, setTaskRunning] = useState(false);
+  const [extensions, setExtensions] = useState<ExtensionManifest[]>(() => { try { const v = JSON.parse(localStorage.getItem(EXTENSIONS_KEY) || "[]"); return Array.isArray(v) ? v.filter(x => x && typeof x.id === "string" && typeof x.name === "string") : []; } catch { return []; } });
+  const [extensionError, setExtensionError] = useState("");
+  const [wordWrap, setWordWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").wordWrap === true; } catch { return false; } });
+  const [minimap, setMinimap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").minimap === true; } catch { return false; } });
   const [fileName, setFileName] = useState("Welcome.md");
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
