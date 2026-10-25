@@ -41,7 +41,7 @@ fn safe_relative_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let rel = Path::new(relative);
     if relative.is_empty()
         || relative.trim() != relative
-        || relative.contains('\\\\')
+        || relative.contains('\\')
         || relative.contains(':')
         || rel.is_absolute()
         || relative.split('/').any(|part| {
