@@ -275,9 +275,13 @@ struct TerminalOutput {
 fn start_terminal(
     app: AppHandle,
     state: State<'_, TerminalState>,
+    project: State<'_, ProjectState>,
     cols: u16,
     rows: u16,
 ) -> Result<String, String> {
+    let project_directory = project.root.lock()
+        .map_err(|_| "Project state unavailable.".to_string())?
+        .clone();
     let pty_system = native_pty_system();
     let pair = pty_system
         .openpty(PtySize {
@@ -301,6 +305,12 @@ fn start_terminal(
         cmd.arg("-i");
         cmd
     };
+
+    // Start the integrated terminal in the currently opened project when one is
+    // selected. Before a project is opened, keep the shell's normal default directory.
+    if let Some(directory) = project_directory.as_ref() {
+        command.cwd(directory);
+    }
 
     let child = pair
         .slave
