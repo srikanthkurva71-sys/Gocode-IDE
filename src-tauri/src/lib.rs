@@ -76,7 +76,11 @@ fn list_project_files(state: State<'_, ProjectState>) -> Result<Vec<ProjectEntry
             if matches!(name.as_str(), ".git" | "node_modules" | "target" | "dist" | ".venv" | "__pycache__") { continue; }
             let path = item.path();
             let relative = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
-            let meta = match item.metadata() { Ok(m) => m, Err(_) => continue };
+            // Do not follow symlinks while enumerating a project. A linked directory may
+            // point outside the workspace and otherwise expose unrelated files in Explorer.
+            let link_meta = match fs::symlink_metadata(&path) { Ok(m) => m, Err(_) => continue };
+            if link_meta.file_type().is_symlink() { continue; }
+            let meta = link_meta;
             if meta.is_dir() {
                 entries.push(ProjectEntry { path: relative.clone(), is_dir: true, size: 0 });
                 if entries.len() < 10000 { stack.push((path, relative)); }
