@@ -45,6 +45,7 @@ The development branch currently has:
 - [Privacy principles](docs/PRIVACY.md)
 - [Windows compatibility policy](docs/COMPATIBILITY.md)
 - [Release checklist](docs/RELEASE.md)
+- [Language tooling, debugging, extension-host, and release acceptance plan](docs/LANGUAGE_TOOLING_AND_RELEASE_PLAN.md)
 
 ## Development
 
