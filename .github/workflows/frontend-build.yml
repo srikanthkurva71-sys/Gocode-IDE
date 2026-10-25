@@ -27,5 +27,7 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Run unit tests
+        run: npm test
       - name: Type-check and build
         run: npm run build
