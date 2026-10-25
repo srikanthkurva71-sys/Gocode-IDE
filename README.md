@@ -17,7 +17,7 @@ The development branch currently has:
 - React + TypeScript + Vite frontend with an early editor-style UI.
 - Monaco editor with language-aware syntax highlighting for common programming languages and an editor Problems panel that displays diagnostics supplied by Monaco-supported language services.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
-- Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.
+- Native project folder opening, local remembering/restoration of the last project path, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit. Only the folder path is remembered; project contents are not copied to cloud storage.
 - Bounded project-wide text search with case-insensitive matching, line-numbered results, symlink skipping, generated-folder exclusions, 1 MB per-file limit, and a 200-result cap.
 - Local Git status, diff, stage-all, commit, local branch listing/switching, and user-confirmed fast-forward pull/push to `origin` through the installed Git CLI.
 - Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration. Running a detected task requires explicit confirmation because project build/test commands can execute project-controlled code.
