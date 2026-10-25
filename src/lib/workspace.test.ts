@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, isValidRelativeFileName } from "./workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -51,5 +51,15 @@ describe("findWorkspaceMatches", () => {
 
   it("returns every buffer for an empty query, matching current UI semantics", () => {
     expect(findWorkspaceMatches(files, "")).toHaveLength(3);
+  });
+});
+
+describe("formatTaskOutput", () => {
+  it("separates command and output with real line breaks", () => {
+    expect(formatTaskOutput(true, "npm test", "Tests passed")).toBe("SUCCESS: npm test\n\nTests passed");
+  });
+
+  it("labels failed tasks clearly", () => {
+    expect(formatTaskOutput(false, "cargo test", "1 test failed")).toBe("FAILED: cargo test\n\n1 test failed");
   });
 });
