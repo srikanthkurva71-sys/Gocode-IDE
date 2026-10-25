@@ -54,7 +54,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: npm-dependency-audit
-          path: npm-audit-report.json
+          path: |
+            npm-audit-report.json
+            package-lock.json
           if-no-files-found: warn
       - name: Run unit tests
         run: npm test
