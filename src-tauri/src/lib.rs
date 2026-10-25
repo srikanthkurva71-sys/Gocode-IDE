@@ -8,7 +8,7 @@ use std::{
     thread,
 };
 
-use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, PtySystem, Child};
+use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, Child};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 use std::{
@@ -213,7 +213,9 @@ fn read_project_file(state: State<'_, ProjectState>, path: String) -> Result<Str
 fn ensure_safe_parent_directories(root: &Path, parent: &Path) -> Result<(), String> {
     let relative = parent.strip_prefix(root)
         .map_err(|_| "File is outside the opened project.".to_string())?;
-    let mut current = root.to_path_buf();
+    let canonical_root = fs::canonicalize(root)
+        .map_err(|e| format!("Cannot verify project root: {e}"))?;
+    let mut current = canonical_root.clone();
 
     for component in relative.components() {
         let std::path::Component::Normal(part) = component else {
@@ -240,7 +242,7 @@ fn ensure_safe_parent_directories(root: &Path, parent: &Path) -> Result<(), Stri
 
         let canonical = fs::canonicalize(&current)
             .map_err(|e| format!("Cannot verify project directory: {e}"))?;
-        if !canonical.starts_with(root) {
+        if !canonical.starts_with(&canonical_root) {
             return Err("File is outside the opened project.".into());
         }
     }
