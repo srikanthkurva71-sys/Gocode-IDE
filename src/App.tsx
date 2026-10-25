@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
+import { filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -89,8 +89,7 @@ export default function App() {
   const quickOpenEntries = useMemo(() => {
     const names = new Set(Object.keys(files));
     for (const entry of projectEntries) if (!entry.is_dir) names.add(entry.path);
-    const query = quickOpenQuery.trim().toLowerCase();
-    return [...names].filter(name => !query || name.toLowerCase().includes(query)).sort().slice(0, 100);
+    return filterQuickOpenNames(names, quickOpenQuery, 100);
   }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
   const matches = useMemo(() => findWorkspaceMatches(files, searchTerm), [files, searchTerm]);
