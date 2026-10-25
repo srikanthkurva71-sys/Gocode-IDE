@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -61,6 +61,20 @@ describe("formatTaskOutput", () => {
 
   it("labels failed tasks clearly", () => {
     expect(formatTaskOutput(false, "cargo test", "1 test failed")).toBe("FAILED: cargo test\n\n1 test failed");
+  });
+});
+
+describe("isWithinTextImportLimit", () => {
+  it("accepts sizes from zero through the 2 MB limit", () => {
+    expect(isWithinTextImportLimit(0)).toBe(true);
+    expect(isWithinTextImportLimit(MAX_WORKSPACE_FILE_CHARS)).toBe(true);
+  });
+
+  it("rejects oversized, negative, and non-finite sizes", () => {
+    expect(isWithinTextImportLimit(MAX_WORKSPACE_FILE_CHARS + 1)).toBe(false);
+    expect(isWithinTextImportLimit(-1)).toBe(false);
+    expect(isWithinTextImportLimit(Number.NaN)).toBe(false);
+    expect(isWithinTextImportLimit(Number.POSITIVE_INFINITY)).toBe(false);
   });
 });
 
