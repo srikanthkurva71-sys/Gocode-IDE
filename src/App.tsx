@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./lib/workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -416,24 +416,51 @@ export default function App() {
     const selected = Array.from(event.target.files ?? []);
     event.target.value = "";
     if (!selected.length) return;
-    const accepted = selected.filter(file => file.size <= MAX_WORKSPACE_FILE_CHARS * 4);
-    if (accepted.length !== selected.length) setMessage("Some files were skipped because they exceed the 2 MB text import limit.");
+
+    const eligible = selected.filter(file =>
+      isValidRelativeFileName(file.name) && isWithinTextImportLimit(file.size)
+    );
+    const accepted = eligible.slice(0, MAX_WORKSPACE_FILES);
+    const skipped = selected.length - accepted.length;
+    if (skipped > 0) {
+      setMessage(`Skipped ${skipped} file(s): invalid filename, over 2 MB, or import batch limit reached.`);
+    }
     if (!accepted.length) return;
+
     let remaining = accepted.length;
+    let failed = 0;
     const imported: Workspace = {};
+    const finish = () => {
+      remaining -= 1;
+      if (remaining !== 0) return;
+      const safeImported = sanitizeWorkspaceFiles(imported);
+      const merged = sanitizeWorkspaceFiles({ ...files, ...safeImported });
+      setFiles(merged);
+      const importedNames = Object.keys(safeImported).filter(name =>
+        Object.prototype.hasOwnProperty.call(merged, name) && merged[name] === safeImported[name]
+      );
+      const lastImported = [...importedNames].reverse().find(name => name in merged);
+      if (lastImported) setFileName(lastImported);
+      setPanel("Explorer");
+      if (failed > 0) {
+        setMessage(`Imported ${importedNames.length} file(s); ${failed} file(s) could not be read.`);
+      } else {
+        setMessage(`Imported ${importedNames.length} file(s) into the browser workspace.`);
+      }
+    };
+
     for (const file of accepted) {
       const reader = new FileReader();
       reader.onload = () => {
-        imported[file.name] = String(reader.result ?? "");
-        remaining -= 1;
-        if (remaining === 0) {
-          setFiles(current => ({ ...current, ...imported }));
-          setFileName(selected[selected.length - 1].name);
-          setPanel("Explorer");
-          setMessage("Opened " + selected.length + " file(s) into the browser workspace.");
-        }
+        const body = String(reader.result ?? "");
+        if (body.length <= MAX_WORKSPACE_FILE_CHARS) imported[file.name] = body;
+        else failed += 1;
+        finish();
       };
-      reader.onerror = () => { remaining -= 1; if (remaining === 0) setMessage("Some files could not be read."); };
+      reader.onerror = () => {
+        failed += 1;
+        finish();
+      };
       reader.readAsText(file);
     }
   }
