@@ -73,6 +73,7 @@ export default function App() {
   const [minimap, setMinimap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").minimap === true; } catch { return false; } });
   const [fileName, setFileName] = useState("Welcome.md");
   const [openTabs, setOpenTabs] = useState<string[]>(["Welcome.md"]);
+  const [cursorPosition, setCursorPosition] = useState({ line: 1, column: 1 });
   const [draftName, setDraftName] = useState("");
   const [newFile, setNewFile] = useState(false);
   const [newFolder, setNewFolder] = useState(false);
@@ -246,6 +247,9 @@ export default function App() {
         event.preventDefault();
         openQuickOpenEntry(quickOpenEntries[quickOpenSelectedIndex]);
         return;
+      } else if ((event.ctrlKey || event.metaKey) && event.key.toLowerCase() === "w" && openTabs.includes(fileName)) {
+        event.preventDefault();
+        closeEditorTab(fileName);
       } else if ((event.ctrlKey || event.metaKey) && event.key === "Tab" && openTabs.length > 1) {
         event.preventDefault();
         const currentIndex = openTabs.indexOf(fileName);
@@ -645,7 +649,7 @@ export default function App() {
       </aside>
       <main className="main"><div className="tabs">{openTabs.map(name => <div key={name} className={"tab " + (fileName === name ? "tab-active" : "tab-inactive")} onClick={() => setFileName(name)} title={name}><span className="file-icon">◇</span><span className="tab-name">{name}</span><button className="tab-close" aria-label={"Close " + name} title={"Close " + name} onClick={event => { event.stopPropagation(); closeEditorTab(name); }}>×</button></div>)}<div className="editor-actions"><span>{lineCount} lines</span><button onClick={downloadFile} title="Download current file">↓</button><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
-        <div className="editor-wrap"><Editor height="100%" onMount={editor => { editorRef.current = editor; }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: minimap }, fontSize: 13, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
+        <div className="editor-wrap"><Editor height="100%" onMount={editor => { editorRef.current = editor; setCursorPosition({ line: editor.getPosition()?.lineNumber ?? 1, column: editor.getPosition()?.column ?? 1 }); editor.onDidChangeCursorPosition(event => setCursorPosition({ line: event.position.lineNumber, column: event.position.column })); }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: minimap }, fontSize: 13, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => { editorRef.current?.revealLineInCenter(item.lineNumber); editorRef.current?.setPosition({ lineNumber: item.lineNumber, column: item.column }); editorRef.current?.focus(); setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`); }}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
       </main>
     </div>
@@ -658,6 +662,6 @@ export default function App() {
         <small>Ctrl+P to open · Esc to close · Showing up to 100 files</small>
       </section>
     </div>}
-    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>Ctrl+S Save · Ctrl+N New · Ctrl+F Find · Ctrl+P Quick Open · Ctrl+Tab Next tab</span><span className="push">Gocode IDE · Free and local-first</span></footer>
+    <footer><span>● {message}</span><span>Browser storage</span><span>UTF-8</span><span>{languageForFile(fileName)} · Ln {cursorPosition.line}, Col {cursorPosition.column}</span><span>Ctrl+S Save · Ctrl+N New · Ctrl+W Close tab · Ctrl+Tab Next tab</span><span className="push">Gocode IDE · Free and local-first</span></footer>
   </div>;
 }
