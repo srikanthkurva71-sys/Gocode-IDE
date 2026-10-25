@@ -56,9 +56,20 @@ export function mergeWorkspaceFiles(
   current: unknown,
   incoming: unknown,
 ): Record<string, string> {
-  // Sanitize both inputs and prioritize newly imported/edited files when the cap is reached.
-  return sanitizeWorkspaceFiles({
-    ...sanitizeWorkspaceFiles(current),
-    ...sanitizeWorkspaceFiles(incoming),
-  });
+  // Sanitize inputs and reserve the limited workspace slots for incoming files first.
+  const safeIncoming = sanitizeWorkspaceFiles(incoming);
+  const safeCurrent = sanitizeWorkspaceFiles(current);
+  const merged: Record<string, string> = {};
+
+  for (const [name, body] of Object.entries(safeIncoming)) {
+    merged[name] = body;
+  }
+
+  for (const [name, body] of Object.entries(safeCurrent)) {
+    if (Object.prototype.hasOwnProperty.call(merged, name)) continue;
+    if (Object.keys(merged).length >= MAX_WORKSPACE_FILES) break;
+    merged[name] = body;
+  }
+
+  return merged;
 }
