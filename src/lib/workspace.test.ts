@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, mergeWorkspaceFiles, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
+import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, mergeWorkspaceFiles, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -159,5 +159,19 @@ describe("filterQuickOpenNames", () => {
   it("handles invalid result limits safely", () => {
     expect(filterQuickOpenNames(names, "", -1)).toEqual([]);
     expect(filterQuickOpenNames(names, "", Number.NaN)).toHaveLength(3);
+  });
+});
+
+describe("clampEditorFontSize", () => {
+  it("keeps editor font sizes inside the supported range", () => {
+    expect(clampEditorFontSize(13)).toBe(13);
+    expect(clampEditorFontSize(5)).toBe(10);
+    expect(clampEditorFontSize(99)).toBe(24);
+    expect(clampEditorFontSize(15.6)).toBe(16);
+  });
+
+  it("uses a fallback for non-finite values", () => {
+    expect(clampEditorFontSize(Number.NaN)).toBe(13);
+    expect(clampEditorFontSize(Number.POSITIVE_INFINITY, 12)).toBe(12);
   });
 });
