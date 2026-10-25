@@ -77,3 +77,12 @@ export function mergeWorkspaceFiles(
 
   return merged;
 }
+
+export function filterQuickOpenNames(names: Iterable<string>, query: string, limit = 100): string[] {
+  const needle = query.trim().toLowerCase();
+  const safeLimit = Number.isFinite(limit) ? Math.max(0, Math.floor(limit)) : 100;
+  return [...new Set(names)]
+    .filter(name => !needle || name.toLowerCase().includes(needle))
+    .sort((a, b) => a.localeCompare(b))
+    .slice(0, safeLimit);
+}
