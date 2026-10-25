@@ -27,6 +27,8 @@ jobs:
           node-version: 20
       - name: Install dependencies
         run: npm install
+      - name: Apply compatible dependency security updates
+        run: npm audit fix
       - name: Audit dependency vulnerabilities
         shell: bash
         run: |
