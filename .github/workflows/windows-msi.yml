@@ -42,9 +42,7 @@ jobs:
       - name: Generate Windows application icon
         run: python scripts/generate_icon.py
       - name: Install frontend dependencies
-        run: npm install
-      - name: Apply compatible dependency security updates
-        run: npm audit fix
+        run: npm ci
       - name: Verify dependency audit
         run: npm audit --audit-level=low
       - name: Run Rust unit tests
