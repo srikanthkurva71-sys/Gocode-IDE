@@ -110,6 +110,10 @@ fn write_project_file(state: State<'_, ProjectState>, path: String, content: Str
     fs::create_dir_all(parent).map_err(|e| format!("Cannot create parent directory: {e}"))?;
     let canonical_parent = fs::canonicalize(parent).map_err(|e| e.to_string())?;
     if !canonical_parent.starts_with(&root) { return Err("File is outside the opened project.".into()); }
+    if target.exists() {
+        let canonical_target = fs::canonicalize(&target).map_err(|e| e.to_string())?;
+        if !canonical_target.starts_with(&root) || !canonical_target.is_file() { return Err("Refusing to write outside the opened project or to a non-file.".into()); }
+    }
     fs::write(target, content).map_err(|e| format!("Cannot save project file: {e}"))
 }
 
