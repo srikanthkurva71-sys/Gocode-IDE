@@ -414,14 +414,14 @@ export default function App() {
   }
   function openFiles(event: ChangeEvent<HTMLInputElement>) {
     const selected = Array.from(event.target.files ?? []);
+    event.target.value = "";
     if (!selected.length) return;
-    let remaining = selected.length;
+    const accepted = selected.filter(file => file.size <= MAX_WORKSPACE_FILE_CHARS * 4);
+    if (accepted.length !== selected.length) setMessage("Some files were skipped because they exceed the 2 MB text import limit.");
+    if (!accepted.length) return;
+    let remaining = accepted.length;
     const imported: Workspace = {};
-    for (const file of selected) {
-      if (file.size > MAX_WORKSPACE_FILE_CHARS * 4) {
-        remaining -= 1;
-        continue;
-      }
+    for (const file of accepted) {
       const reader = new FileReader();
       reader.onload = () => {
         imported[file.name] = String(reader.result ?? "");
@@ -436,7 +436,6 @@ export default function App() {
       reader.onerror = () => { remaining -= 1; if (remaining === 0) setMessage("Some files could not be read."); };
       reader.readAsText(file);
     }
-    event.target.value = "";
   }
   function exportWorkspace() {
     download("gocode-workspace.json", JSON.stringify({ app: "Gocode IDE", version: 1, files }, null, 2), "application/json");
