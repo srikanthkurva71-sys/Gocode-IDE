@@ -573,7 +573,7 @@ mod project_path_tests {
         let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let root = std::env::temp_dir().join(format!("gocode-search-test-{unique}"));
         fs::create_dir_all(root.join("src")).unwrap();
-        fs::write(root.join("src").join("main.rs"), "fn main() {}\\nlet TARGET = 1;\\n").unwrap();
+        fs::write(root.join("src").join("main.rs"), "fn main() {}\nlet TARGET = 1;\n").unwrap();
         let results = search_project_root(&root, "target").unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "src/main.rs");
