@@ -29,3 +29,7 @@ export function findWorkspaceMatches(
     (name + "\n" + body).toLowerCase().includes(needle)
   );
 }
+
+export function formatTaskOutput(success: boolean, command: string, output: string): string {
+  return (success ? "SUCCESS: " : "FAILED: ") + command + "\n\n" + output;
+}
