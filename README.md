@@ -17,14 +17,18 @@ The development branch currently has:
 - React + TypeScript + Vite frontend with an early editor-style UI.
 - Monaco editor with language-aware syntax highlighting for common programming languages.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
-- Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.\n- Local Git status, diff, stage-all, and commit actions through the installed Git CLI.\n- Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.\n- Persistent editor preferences for word wrap and minimap.\n- Importable extension-manifest review registry that validates basic fields and displays publisher/license/capability declarations; it does not execute or install extension code.
+- Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.
+- Local Git status, diff, stage-all, and commit actions through the installed Git CLI.
+- Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.
+- Persistent editor preferences for word wrap and minimap.
+- Importable extension-manifest review registry that validates basic fields and displays publisher/license/capability declarations; it does not execute or install extension code.
 - Branded blue G monogram for the workbench, browser favicon, and Windows application icon.
 - Initial Tauri 2 / Rust desktop-shell scaffolding.
 - Windows MSI GitHub Actions workflow that is being tested.
 - Automated frontend type-check/build workflow.
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
-**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. The debugger, Git operations, compiler/toolchain adapters, extension host, and language-server integration are not implemented. A clean-runner install/launch/uninstall smoke test is now included in the Windows MSI workflow. It must pass before treating that workflow as a verified package; manual testing on supported Windows versions is still required.
+**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit and initial fixed build-task adapters are implemented, but Git push/pull/branch management, a DAP debugger, language-server integration, and executable extension hosting remain incomplete. The Windows MSI workflow includes a clean-runner install/launch/uninstall smoke test; the latest run passed. Manual testing on supported Windows versions is still required.
 
 ## Architecture and policies
 
