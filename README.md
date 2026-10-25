@@ -18,6 +18,7 @@ The development branch currently has:
 - Monaco editor with language-aware syntax highlighting for common programming languages and an editor Problems panel that displays diagnostics supplied by Monaco-supported language services.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace.
 - Native project folder opening, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit.
+- Bounded project-wide text search with case-insensitive matching, line-numbered results, symlink skipping, generated-folder exclusions, 1 MB per-file limit, and a 200-result cap.
 - Local Git status, diff, stage-all, commit, local branch listing/switching, and user-confirmed fast-forward pull/push to `origin` through the installed Git CLI.
 - Initial project-task detection and fixed build/test adapters for npm, Cargo, Python syntax compilation, Make, Go, and CMake configuration.
 - Persistent editor preferences for word wrap and minimap.
@@ -28,7 +29,7 @@ The development branch currently has:
 - Automated frontend type-check/build workflow.
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
-**This is not yet a complete IDE.** The workbench remains an early prototype. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit, local branch listing/switching, confirmed fast-forward pull/push, and initial fixed build-task adapters are implemented. A DAP debugger, external language-server integration for broader languages, and executable extension hosting remain incomplete. The Problems panel currently surfaces editor-provided diagnostics; it is not a substitute for full language-server support. The Windows MSI workflow includes a clean-runner install/launch/uninstall smoke test; the latest run passed. Manual testing on supported Windows versions is still required.
+**This is not yet a complete IDE.** The workbench remains an early prototype. Project-wide text search is implemented with bounded scanning and line-numbered matches; it is not a language-aware symbol search. Native open/save is implemented but still needs Windows runtime testing. The native terminal now uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit, local branch listing/switching, confirmed fast-forward pull/push, and initial fixed build-task adapters are implemented. A DAP debugger, external language-server integration for broader languages, and executable extension hosting remain incomplete. The Problems panel currently surfaces editor-provided diagnostics; it is not a substitute for full language-server support. The Windows MSI workflow includes a clean-runner install/launch/uninstall smoke test; the latest run passed. Manual testing on supported Windows versions is still required.
 
 ## Architecture and policies
 
