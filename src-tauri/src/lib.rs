@@ -157,6 +157,42 @@ fn git_commit(state: State<'_, ProjectState>, message: String) -> Result<String,
     run_git(&root, &["commit", "-m", message])
 }
 
+
+#[tauri::command]
+fn git_list_branches(state: State<'_, ProjectState>) -> Result<Vec<String>, String> {
+    let root = project_root(&state)?;
+    let output = run_git(&root, &["branch", "--format=%(refname:short)"])?;
+    Ok(output.lines().map(str::trim).filter(|line| !line.is_empty()).map(str::to_string).collect())
+}
+
+#[tauri::command]
+fn git_checkout_branch(state: State<'_, ProjectState>, branch: String) -> Result<String, String> {
+    let root = project_root(&state)?;
+    let branch = branch.trim();
+    if branch.is_empty() || branch.len() > 200 || branch.starts_with('-') {
+        return Err("Choose a valid existing local branch.".into());
+    }
+    run_git(&root, &["check-ref-format", "--branch", branch])?;
+    let branches = run_git(&root, &["branch", "--format=%(refname:short)"])?;
+    if !branches.lines().any(|line| line.trim() == branch) {
+        return Err("Only existing local branches can be selected here.".into());
+    }
+    run_git(&root, &["switch", branch])?;
+    Ok(format!("Switched to branch {branch}."))
+}
+
+#[tauri::command]
+fn git_pull_ff_only(state: State<'_, ProjectState>) -> Result<String, String> {
+    let root = project_root(&state)?;
+    run_git(&root, &["pull", "--ff-only"])
+}
+
+#[tauri::command]
+fn git_push_current_branch(state: State<'_, ProjectState>) -> Result<String, String> {
+    let root = project_root(&state)?;
+    run_git(&root, &["push", "-u", "origin", "HEAD"])
+}
+
 #[derive(Serialize)]
 struct TaskResult { command: String, success: bool, output: String }
 
@@ -387,6 +423,10 @@ pub fn run() {
             git_diff,
             git_stage_all,
             git_commit,
+            git_list_branches,
+            git_checkout_branch,
+            git_pull_ff_only,
+            git_push_current_branch,
             detect_project_tasks,
             run_project_task
         ])
