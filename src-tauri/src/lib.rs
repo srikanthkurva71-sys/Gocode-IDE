@@ -190,24 +190,61 @@ fn read_project_file(state: State<'_, ProjectState>, path: String) -> Result<Str
 }
 
 #[tauri::command]
+fn ensure_safe_parent_directories(root: &Path, parent: &Path) -> Result<(), String> {
+    let relative = parent.strip_prefix(root)
+        .map_err(|_| "File is outside the opened project.".to_string())?;
+    let mut current = root.to_path_buf();
+
+    for component in relative.components() {
+        let std::path::Component::Normal(part) = component else {
+            return Err("Invalid project directory path.".into());
+        };
+        current.push(part);
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) => {
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err("Refusing to write through a symbolic link or non-directory.".into());
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                fs::create_dir(&current)
+                    .map_err(|e| format!("Cannot create project directory: {e}"))?;
+                let metadata = fs::symlink_metadata(&current)
+                    .map_err(|e| format!("Cannot verify project directory: {e}"))?;
+                if metadata.file_type().is_symlink() || !metadata.is_dir() {
+                    return Err("Refusing to write through a symbolic link or non-directory.".into());
+                }
+            }
+            Err(error) => return Err(format!("Cannot inspect project directory: {error}")),
+        }
+
+        let canonical = fs::canonicalize(&current)
+            .map_err(|e| format!("Cannot verify project directory: {e}"))?;
+        if !canonical.starts_with(root) {
+            return Err("File is outside the opened project.".into());
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
 fn write_project_file(state: State<'_, ProjectState>, path: String, content: String) -> Result<(), String> {
     let root = project_root(&state)?;
     let target = safe_relative_path(&root, &path)?;
     let parent = target.parent().ok_or_else(|| "Invalid file path.".to_string())?;
-    fs::create_dir_all(parent).map_err(|e| format!("Cannot create parent directory: {e}"))?;
-    let canonical_parent = fs::canonicalize(parent).map_err(|e| e.to_string())?;
-    if !canonical_parent.starts_with(&root) { return Err("File is outside the opened project.".into()); }
-    // Inspect the directory entry itself rather than using Path::exists(), which
-    // returns false for dangling symlinks. Refuse symlinks outright to avoid
-    // following a link (including a dangling link created after validation).
+    ensure_safe_parent_directories(&root, parent)?;
+
     match fs::symlink_metadata(&target) {
         Ok(meta) => {
             if meta.file_type().is_symlink() {
                 return Err("Refusing to write through a symbolic link.".into());
             }
+            if !meta.is_file() {
+                return Err("Refusing to write to a non-file.".into());
+            }
             let canonical_target = fs::canonicalize(&target).map_err(|e| e.to_string())?;
-            if !canonical_target.starts_with(&root) || !canonical_target.is_file() {
-                return Err("Refusing to write outside the opened project or to a non-file.".into());
+            if !canonical_target.starts_with(&root) {
+                return Err("File is outside the opened project.".into());
             }
         }
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
