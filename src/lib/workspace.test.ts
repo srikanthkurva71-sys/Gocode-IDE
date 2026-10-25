@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, mergeWorkspaceFiles, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
+import { filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, mergeWorkspaceFiles, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -140,5 +140,24 @@ describe("mergeWorkspaceFiles", () => {
       { "safe.txt": "keep", "../bad.txt": "reject" },
       { "new.txt": "added", "C:/outside.txt": "reject" },
     )).toEqual({ "safe.txt": "keep", "new.txt": "added" });
+  });
+});
+
+describe("filterQuickOpenNames", () => {
+  const names = ["src/App.tsx", "README.md", "src/main.ts", "README.md"];
+
+  it("filters names case-insensitively and sorts unique results", () => {
+    expect(filterQuickOpenNames(names, "read")).toEqual(["README.md"]);
+    expect(filterQuickOpenNames(names, "SRC")).toEqual(["src/App.tsx", "src/main.ts"]);
+  });
+
+  it("returns sorted names for an empty query and respects the result limit", () => {
+    expect(filterQuickOpenNames(names, "")).toEqual(["README.md", "src/App.tsx", "src/main.ts"]);
+    expect(filterQuickOpenNames(names, "", 1)).toEqual(["README.md"]);
+  });
+
+  it("handles invalid result limits safely", () => {
+    expect(filterQuickOpenNames(names, "", -1)).toEqual([]);
+    expect(filterQuickOpenNames(names, "", Number.NaN)).toHaveLength(3);
   });
 });
