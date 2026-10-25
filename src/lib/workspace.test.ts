@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName } from "./workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, sanitizeWorkspaceFiles } from "./workspace";
 
 describe("isValidRelativeFileName", () => {
   it("accepts simple and nested relative paths", () => {
@@ -61,5 +61,23 @@ describe("formatTaskOutput", () => {
 
   it("labels failed tasks clearly", () => {
     expect(formatTaskOutput(false, "cargo test", "1 test failed")).toBe("FAILED: cargo test\n\n1 test failed");
+  });
+});
+
+describe("sanitizeWorkspaceFiles", () => {
+  it("keeps only valid relative paths with text contents", () => {
+    expect(sanitizeWorkspaceFiles({
+      "src/main.ts": "console.log('ok')",
+      "../outside.txt": "blocked",
+      "C:/Windows/file.txt": "blocked",
+      "CON.txt": "blocked",
+      "object.txt": 42,
+    })).toEqual({ "src/main.ts": "console.log('ok')" });
+  });
+
+  it("rejects non-object and array inputs", () => {
+    expect(sanitizeWorkspaceFiles(null)).toEqual({});
+    expect(sanitizeWorkspaceFiles("not files")).toEqual({});
+    expect(sanitizeWorkspaceFiles(["one", "two"])).toEqual({});
   });
 });
