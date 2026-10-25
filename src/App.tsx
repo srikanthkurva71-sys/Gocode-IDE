@@ -44,7 +44,7 @@ function loadWorkspace(): Workspace {
       if (value && typeof value === "object" && !Array.isArray(value)) {
         const result: Workspace = {};
         for (const [name, text] of Object.entries(value)) {
-          if (typeof text === "string" && name.trim() && !name.split("/").includes("..")) result[name] = text;
+          if (typeof text === "string" && isValidRelativeFileName(name)) result[name] = text;
         }
         if (Object.keys(result).length) return result;
       }
@@ -451,7 +451,7 @@ export default function App() {
             !value.files || typeof value.files !== "object" || Array.isArray(value.files)) throw new Error("Invalid backup");
         const result: Workspace = {};
         for (const [name, body] of Object.entries(value.files)) {
-          if (typeof body === "string" && name.trim() && !name.split("/").includes("..")) result[name] = body;
+          if (typeof body === "string" && isValidRelativeFileName(name)) result[name] = body;
         }
         if (!Object.keys(result).length) throw new Error("Empty backup");
         setFiles(result); setFileName(Object.keys(result)[0]); setMessage("Workspace backup imported.");
