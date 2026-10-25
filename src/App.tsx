@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, isValidRelativeFileName } from "./lib/workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -329,7 +329,7 @@ export default function App() {
     setTaskOutput("Running " + task + " …");
     try {
       const result = await invoke<TaskResult>("run_project_task", { task });
-      setTaskOutput((result.success ? "SUCCESS: " : "FAILED: ") + result.command + "\n\n" + result.output);
+      setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
       setMessage(result.success ? task + " completed." : task + " failed.");
     } catch (error) {
       setTaskOutput("Could not run task: " + String(error));
