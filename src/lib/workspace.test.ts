@@ -118,6 +118,21 @@ describe("mergeWorkspaceFiles", () => {
     expect(Object.keys(merged)).toHaveLength(MAX_WORKSPACE_FILES);
     expect(merged["new-file.ts"]).toBe("new");
     expect(merged["old-0.txt"]).toBeUndefined();
+    expect(merged[`old-${MAX_WORKSPACE_FILES - 1}.txt"]).toBe("old");
+  });
+
+  it("incoming contents replace existing contents for the same valid filename", () => {
+    expect(mergeWorkspaceFiles(
+      { "src/main.ts": "old", "README.md": "keep" },
+      { "src/main.ts": "new" },
+    )).toEqual({ "src/main.ts": "new", "README.md": "keep" });
+  });
+
+  it("keeps existing files when incoming records are invalid", () => {
+    expect(mergeWorkspaceFiles(
+      { "safe.txt": "keep", "notes.md": "also keep" },
+      { "../bad.txt": "reject", "C:/outside.txt": "reject" },
+    )).toEqual({ "safe.txt": "keep", "notes.md": "also keep" });
   });
 
   it("sanitizes both existing and incoming file records", () => {
