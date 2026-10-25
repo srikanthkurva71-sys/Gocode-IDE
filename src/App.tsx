@@ -9,7 +9,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
-import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, sanitizeWorkspaceFiles } from "./lib/workspace";
+import { findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILE_CHARS, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -418,6 +418,10 @@ export default function App() {
     let remaining = selected.length;
     const imported: Workspace = {};
     for (const file of selected) {
+      if (file.size > MAX_WORKSPACE_FILE_CHARS * 4) {
+        remaining -= 1;
+        continue;
+      }
       const reader = new FileReader();
       reader.onload = () => {
         imported[file.name] = String(reader.result ?? "");
@@ -440,6 +444,11 @@ export default function App() {
   }
   function importWorkspace(event: ChangeEvent<HTMLInputElement>) {
     const file = event.target.files?.[0]; if (!file) return;
+    if (file.size > MAX_WORKSPACE_BACKUP_BYTES) {
+      setMessage("Workspace backup exceeds the 20 MB import limit.");
+      event.target.value = "";
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       try {
