@@ -33,3 +33,12 @@ export function findWorkspaceMatches(
 export function formatTaskOutput(success: boolean, command: string, output: string): string {
   return (success ? "SUCCESS: " : "FAILED: ") + command + "\n\n" + output;
 }
+
+export function sanitizeWorkspaceFiles(value: unknown): Record<string, string> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return {};
+  const safe: Record<string, string> = {};
+  for (const [name, body] of Object.entries(value)) {
+    if (typeof body === "string" && isValidRelativeFileName(name)) safe[name] = body;
+  }
+  return safe;
+}
