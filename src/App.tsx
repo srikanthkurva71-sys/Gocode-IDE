@@ -129,7 +129,7 @@ export default function App() {
   const lineCount = useMemo(() => text.split("\n").length, [text]);
 
   function projectFileUri(root: string, relative: string): string {
-    const absolute = (root.replace(/\\\\/g, "/").replace(/\\/$/, "") + "/" + relative.replace(/\\\\/g, "/"));
+    const absolute = (root.replace(/\\/g, "/").replace(/\/$/, "") + "/" + relative.replace(/\\/g, "/"));
     return "file:///" + absolute.split("/").filter(Boolean).map((part, index) => index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)).join("/");
   }
 
@@ -139,10 +139,10 @@ export default function App() {
     const executable = window.prompt("Enter the full path to a language-server executable you installed and trust:");
     if (!executable?.trim()) return;
     const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
-    const args = rawArgs.trim() ? rawArgs.trim().split(/\\s+/) : [];
+    const args = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
     try {
       if (lspSessionId) await invoke("lsp_stop", { sessionId: lspSessionId });
-      const rootUri = projectFileUri(projectRoot, "").replace(/\\/$/, "");
+      const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
       const id = await invoke<string>("lsp_start", { executable: executable.trim(), args, rootUri });
       setLspSessionId(id);
       setLspReady(false);
