@@ -113,15 +113,8 @@ fn normalize_search_query(query: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-#[tauri::command]
-fn search_project_files(
-    state: State<'_, ProjectState>,
-    query: String,
-) -> Result<Vec<ProjectSearchResult>, String> {
-    let root = project_root(&state)?;
-    let query = normalize_search_query(&query)?;
-
-    let mut stack = vec![(root.clone(), String::new())];
+fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResult>, String> {
+    let mut stack = vec![(root.to_path_buf(), String::new())];
     let mut results = Vec::new();
     let mut inspected_files = 0usize;
     while let Some((directory, prefix)) = stack.pop() {
@@ -154,7 +147,7 @@ fn search_project_files(
                 Err(_) => continue,
             };
             for (index, line) in contents.lines().enumerate() {
-                if line.to_lowercase().contains(&query) {
+                if line.to_lowercase().contains(query) {
                     let mut snippet = line.trim().to_string();
                     if snippet.len() > 240 {
                         snippet.truncate(240);
@@ -173,6 +166,16 @@ fn search_project_files(
     }
     results.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()).then(a.line_number.cmp(&b.line_number)));
     Ok(results)
+}
+
+#[tauri::command]
+fn search_project_files(
+    state: State<'_, ProjectState>,
+    query: String,
+) -> Result<Vec<ProjectSearchResult>, String> {
+    let root = project_root(&state)?;
+    let query = normalize_search_query(&query)?;
+    search_project_root(&root, &query)
 }
 
 #[tauri::command]
@@ -561,6 +564,38 @@ mod project_path_tests {
         assert!(normalize_search_query(&"x".repeat(201)).is_err());
         assert!(normalize_search_query(&"x".repeat(200)).is_ok());
     }
+
+    #[test]
+    fn search_finds_case_insensitive_matches_with_line_numbers() {
+        use super::search_project_root;
+        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-search-test-{unique}"));
+        fs::create_dir_all(root.join("src")).unwrap();
+        fs::write(root.join("src").join("main.rs"), "fn main() {}\\nlet TARGET = 1;\\n").unwrap();
+        let results = search_project_root(&root, "target").unwrap();
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].path, "src/main.rs");
+        assert_eq!(results[0].line_number, 2);
+        assert!(results[0].snippet.contains("TARGET"));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn search_skips_generated_directories() {
+        use super::search_project_root;
+        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-search-test-{unique}"));
+        fs::create_dir_all(root.join("node_modules")).unwrap();
+        fs::write(root.join("node_modules").join("hidden.txt"), "secretneedle").unwrap();
+        let results = search_project_root(&root, "secretneedle").unwrap();
+        assert!(results.is_empty());
+        fs::remove_dir_all(root).unwrap();
+    }
+
 
     #[test]
     fn accepts_relative_project_file() {
