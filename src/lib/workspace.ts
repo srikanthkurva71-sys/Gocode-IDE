@@ -86,3 +86,8 @@ export function filterQuickOpenNames(names: Iterable<string>, query: string, lim
     .sort((a, b) => a.localeCompare(b))
     .slice(0, safeLimit);
 }
+
+export function clampEditorFontSize(value: number, fallback = 13): number {
+  if (!Number.isFinite(value)) return fallback;
+  return Math.max(10, Math.min(24, Math.round(value)));
+}
