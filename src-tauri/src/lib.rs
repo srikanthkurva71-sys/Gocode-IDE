@@ -11,6 +11,8 @@ use std::{
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, Child};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+
+mod lsp;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -618,10 +620,14 @@ fn close_terminal(state: State<'_, TerminalState>, session_id: String) -> Result
 pub fn run() {
     tauri::Builder::default()
         .manage(TerminalState::default())
+        .manage(lsp::LspState::default())
         .manage(ProjectState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
+            lsp::lsp_start,
+            lsp::lsp_send,
+            lsp::lsp_stop,
             start_terminal,
             write_terminal_input,
             resize_terminal,
