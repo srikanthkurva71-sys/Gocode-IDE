@@ -39,8 +39,28 @@ struct GitResult {
 
 fn safe_relative_path(root: &Path, relative: &str) -> Result<PathBuf, String> {
     let rel = Path::new(relative);
-    if rel.is_absolute() || rel.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_))) {
-        return Err("Path must stay inside the opened project.".into());
+    if relative.is_empty()
+        || relative.trim() != relative
+        || relative.contains('\\\\')
+        || relative.contains(':')
+        || rel.is_absolute()
+        || relative.split('/').any(|part| {
+            let trimmed = part.trim_end_matches(['.', ' ']);
+            let base = trimmed.split('.').next().unwrap_or("").to_ascii_uppercase();
+            part.is_empty()
+                || part == "."
+                || part == ".."
+                || part.ends_with('.')
+                || part.ends_with(' ')
+                || matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+                || (base.len() == 4
+                    && (base.starts_with("COM") || base.starts_with("LPT"))
+                    && base.as_bytes()[3].is_ascii_digit()
+                    && base.as_bytes()[3] != b'0')
+        })
+        || rel.components().any(|c| matches!(c, std::path::Component::ParentDir | std::path::Component::RootDir | std::path::Component::Prefix(_)))
+    {
+        return Err("Path must be a valid relative file path inside the opened project.".into());
     }
     Ok(root.join(rel))
 }
