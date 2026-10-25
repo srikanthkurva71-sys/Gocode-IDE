@@ -14,6 +14,7 @@ describe("isValidRelativeFileName", () => {
     expect(isValidRelativeFileName("D:relative.txt")).toBe(false);
     expect(isValidRelativeFileName("src/file:name.ts")).toBe(false);
     expect(isValidRelativeFileName("CON")).toBe(false);
+    expect(isValidRelativeFileName("__proto__")).toBe(false);
     expect(isValidRelativeFileName("nul.txt")).toBe(false);
     expect(isValidRelativeFileName("folder/LPT1.log")).toBe(false);
     expect(isValidRelativeFileName("trailing-dot.")).toBe(false);
