@@ -521,6 +521,7 @@ export default function App() {
       try {
         await invoke("write_project_file", { path: name, content: "" });
         setFiles(current => ({ ...current, [name]: "" }));
+        setSavedProjectContents(current => ({ ...current, [name]: "" }));
         setFileName(name); setDraftName(""); setNewFile(false); setPanel("Explorer");
         await refreshProject();
         setMessage("Created project file " + name);
