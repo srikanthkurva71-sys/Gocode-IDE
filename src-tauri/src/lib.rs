@@ -95,6 +95,81 @@ fn list_project_files(state: State<'_, ProjectState>) -> Result<Vec<ProjectEntry
     Ok(entries)
 }
 
+#[derive(Serialize)]
+struct ProjectSearchResult {
+    path: String,
+    line_number: usize,
+    snippet: String,
+}
+
+#[tauri::command]
+fn search_project_files(
+    state: State<'_, ProjectState>,
+    query: String,
+) -> Result<Vec<ProjectSearchResult>, String> {
+    let root = project_root(&state)?;
+    let query = query.trim().to_lowercase();
+    if query.is_empty() {
+        return Err("Enter text to search for.".into());
+    }
+    if query.len() > 200 {
+        return Err("Search text must be 200 characters or fewer.".into());
+    }
+
+    let mut stack = vec![(root.clone(), String::new())];
+    let mut results = Vec::new();
+    let mut inspected_files = 0usize;
+    while let Some((directory, prefix)) = stack.pop() {
+        let read = fs::read_dir(&directory)
+            .map_err(|e| format!("Cannot read project directory: {e}"))?;
+        for item in read.flatten() {
+            let name = item.file_name().to_string_lossy().to_string();
+            if matches!(name.as_str(), ".git" | "node_modules" | "target" | "dist" | ".venv" | "__pycache__") {
+                continue;
+            }
+            let path = item.path();
+            let relative = if prefix.is_empty() { name.clone() } else { format!("{prefix}/{name}") };
+            let metadata = match fs::symlink_metadata(&path) {
+                Ok(meta) => meta,
+                Err(_) => continue,
+            };
+            if metadata.file_type().is_symlink() {
+                continue;
+            }
+            if metadata.is_dir() {
+                if inspected_files < 10000 { stack.push((path, relative)); }
+                continue;
+            }
+            if !metadata.is_file() { continue; }
+            inspected_files += 1;
+            if inspected_files > 10000 { break; }
+            if metadata.len() > 1_000_000 { continue; }
+            let contents = match fs::read_to_string(&path) {
+                Ok(contents) => contents,
+                Err(_) => continue,
+            };
+            for (index, line) in contents.lines().enumerate() {
+                if line.to_lowercase().contains(&query) {
+                    let mut snippet = line.trim().to_string();
+                    if snippet.len() > 240 {
+                        snippet.truncate(240);
+                        snippet.push('…');
+                    }
+                    results.push(ProjectSearchResult {
+                        path: relative.clone(),
+                        line_number: index + 1,
+                        snippet,
+                    });
+                    if results.len() >= 200 { return Ok(results); }
+                }
+            }
+        }
+        if inspected_files > 10000 { break; }
+    }
+    results.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()).then(a.line_number.cmp(&b.line_number)));
+    Ok(results)
+}
+
 #[tauri::command]
 fn read_project_file(state: State<'_, ProjectState>, path: String) -> Result<String, String> {
     let root = project_root(&state)?;
@@ -443,6 +518,7 @@ pub fn run() {
             set_project_root,
             get_project_root,
             list_project_files,
+            search_project_files,
             read_project_file,
             write_project_file,
             git_status,
