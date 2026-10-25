@@ -92,7 +92,7 @@ pub fn lsp_start(
     let mut command = Command::new(executable);
     command.args(args).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     if let Some(uri) = root_uri.as_deref() {
-        if let Some(path) = uri.strip_prefix("file://") {
+        if let Some(path) = uri.strip_prefix("file:///") {
             let decoded = path.replace("%20", " ");
             let root = PathBuf::from(decoded);
             if root.is_dir() { command.current_dir(root); }
