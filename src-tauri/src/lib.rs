@@ -253,6 +253,20 @@ fn ensure_safe_parent_directories(root: &Path, parent: &Path) -> Result<(), Stri
 }
 
 #[tauri::command]
+fn create_project_directory(state: State<'_, ProjectState>, path: String) -> Result<(), String> {
+    let root = project_root(&state)?;
+    let target = safe_relative_path(&root, &path)?;
+    let parent = target.parent().ok_or_else(|| "Invalid directory path.".to_string())?;
+    ensure_safe_parent_directories(&root, parent)?;
+    match fs::symlink_metadata(&target) {
+        Ok(_) => return Err("A file or directory already exists at that path.".into()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
+        Err(error) => return Err(format!("Cannot inspect target directory: {error}")),
+    }
+    fs::create_dir(&target).map_err(|e| format!("Cannot create project directory: {e}"))
+}
+
+#[tauri::command]
 fn write_project_file(state: State<'_, ProjectState>, path: String, content: String) -> Result<(), String> {
     if content.len() > 2_000_000 {
         return Err("File is larger than the 2 MB editor limit.".into());
@@ -594,6 +608,7 @@ pub fn run() {
             search_project_files,
             read_project_file,
             write_project_file,
+            create_project_directory,
             git_status,
             git_diff,
             git_stage_all,
