@@ -16,6 +16,7 @@ Gocode IDE is a free, local-first development environment in active development.
 The development branch currently has:
 - React + TypeScript + Vite frontend with an early editor-style UI.
 - Monaco editor with language-aware syntax highlighting for common programming languages and an editor Problems panel that displays diagnostics supplied by Monaco-supported language services.
+- Keyboard-driven Quick Open (`Ctrl+P` / `Cmd+P`) filters workspace and opened-project filenames, supports Escape to close, and has unit-tested filename filtering and result limits.
 - Browser-local multi-file buffers, persistence, file import/download, workspace backup import/export, and basic search/replace. Workspace filename validation (including Windows reserved names, drive paths, traversal, and invalid separators) and buffer search helpers have automated unit tests. Workspace backup imports are limited to 20 MB, sanitized to valid relative filenames, and capped at 500 files with a 2,000,000-character limit per imported file; individual file imports above the 2 MB text limit are skipped.
 - Native project folder opening, local remembering/restoration of the last project path, bounded recursive file listing, project file reading/writing with path traversal checks and a 2 MB text-file limit. Only the folder path is remembered; project contents are not copied to cloud storage.
 - Bounded project-wide text search with case-insensitive matching, line-numbered results, symlink skipping, generated-folder exclusions, 1 MB per-file limit, and a 200-result cap.
