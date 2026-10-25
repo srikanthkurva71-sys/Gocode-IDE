@@ -56,6 +56,9 @@ export default function App() {
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
   const [gitInfo, setGitInfo] = useState<GitResult | null>(null);
+  const [gitBranches, setGitBranches] = useState<string[]>([]);
+  const [selectedBranch, setSelectedBranch] = useState("");
+  const [gitBusy, setGitBusy] = useState(false);
   const [gitDiff, setGitDiff] = useState("");
   const [commitMessage, setCommitMessage] = useState("");
   const [tasks, setTasks] = useState<string[]>([]);
@@ -237,6 +240,9 @@ export default function App() {
     try {
       setGitInfo(await invoke<GitResult>("git_status"));
       setGitDiff(await invoke<string>("git_diff"));
+      const branches = await invoke<string[]>("git_list_branches");
+      setGitBranches(branches);
+      setSelectedBranch(current => branches.includes(current) ? current : (branches[0] ?? ""));
       setMessage("Git status refreshed.");
     } catch (error) { setGitInfo(null); setMessage("Git unavailable: " + String(error)); }
   }
@@ -255,6 +261,31 @@ export default function App() {
       setCommitMessage("");
       await refreshGit();
     } catch (error) { setMessage("Git commit failed: " + String(error)); }
+  }
+  async function checkoutGitBranch() {
+    if (!selectedBranch) return;
+    setGitBusy(true);
+    try {
+      setMessage(await invoke<string>("git_checkout_branch", { branch: selectedBranch }));
+      await refreshGit();
+      await refreshProject();
+    } catch (error) { setMessage("Branch switch failed: " + String(error)); }
+    finally { setGitBusy(false); }
+  }
+  async function syncGit(action: "pull" | "push") {
+    const confirmed = window.confirm(action === "pull"
+      ? "Pull from the configured upstream using fast-forward only? Local changes may prevent this."
+      : "Push the current branch to the remote named origin?");
+    if (!confirmed) return;
+    setGitBusy(true);
+    try {
+      const output = await invoke<string>(action === "pull" ? "git_pull_ff_only" : "git_push_current_branch");
+      setTaskOutput(output);
+      setMessage("Git " + action + " completed.");
+      await refreshGit();
+      await refreshProject();
+    } catch (error) { setMessage("Git " + action + " failed: " + String(error)); }
+    finally { setGitBusy(false); }
   }
   async function runTask(task: string) {
     setTaskRunning(true);
@@ -395,7 +426,7 @@ export default function App() {
           {newFile && <form onSubmit={createFile}><input autoFocus placeholder="filename.ext" value={draftName} onChange={e => setDraftName(e.target.value)} /><div className="form-actions"><button type="submit">Create</button><button type="button" onClick={() => setNewFile(false)}>Cancel</button></div></form>}
           <div className="workspace-actions"><button onClick={exportWorkspace}>Export workspace backup</button><label className="import-button">Import backup<input type="file" accept=".json,application/json" onChange={importWorkspace} /></label></div>
         </> : panel === "Search" ? <div className="empty-panel"><label>Search filenames and contents</label><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Search workspace" />{searchTerm && matches.map(([name]) => <button className="search-result" key={name} onClick={() => { setFileName(name); setPanel("Explorer"); }}>{name}<small>Open file</small></button>)}</div>
-          : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim()} onClick={() => void commitGitChanges()}>Commit staged changes</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Push/pull and branch switching are not included yet.</p></div>
+          : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot || gitBusy} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot || gitBusy} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim() || gitBusy} onClick={() => void commitGitChanges()}>Commit staged changes</button><div className="git-branch-controls"><label>Local branch<select aria-label="Local branch" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} disabled={!projectRoot || gitBusy}>{gitBranches.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></label><button disabled={!projectRoot || !selectedBranch || gitBusy || selectedBranch === gitInfo?.branch} onClick={() => void checkoutGitBranch()}>Switch branch</button></div><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("pull")}>Pull (fast-forward only)</button><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("push")}>Push current branch to origin</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Pull/push require a configured remote and may use the credentials configured in Git. Remote sync asks for confirmation; branch switching only targets existing local branches.</p></div>
           : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
           : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
           : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
