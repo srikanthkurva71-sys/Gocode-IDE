@@ -55,6 +55,7 @@ export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [files, setFiles] = useState<Workspace>(loadWorkspace);
   const [nativePaths, setNativePaths] = useState<Record<string, string>>({});
+  const [savedProjectContents, setSavedProjectContents] = useState<Record<string, string>>({});
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
   const [collapsedProjectDirs, setCollapsedProjectDirs] = useState<Record<string, boolean>>({});
@@ -106,7 +107,12 @@ export default function App() {
     setOpenTabs(current => current.includes(fileName) ? current : [...current, fileName]);
   }, [fileName]);
 
+  function isProjectTabDirty(name: string): boolean {
+    return projectEntries.some(entry => entry.path === name && !entry.is_dir) && Object.prototype.hasOwnProperty.call(savedProjectContents, name) && (files[name] ?? "") !== savedProjectContents[name];
+  }
+
   function closeEditorTab(name: string) {
+    if (isProjectTabDirty(name) && !window.confirm("\u201c" + name + "\u201d has unsaved changes. Close this tab anyway?")) return;
     setOpenTabs(current => {
       const next = current.filter(tab => tab !== name);
       if (fileName === name) {
@@ -330,6 +336,7 @@ export default function App() {
     try {
       const contents = await invoke<string>("read_project_file", { path });
       setFiles(current => ({ ...current, [path]: contents }));
+      setSavedProjectContents(current => ({ ...current, [path]: contents }));
       setFileName(path);
       setPanel("Explorer");
       setMessage("Opened project file " + path);
@@ -338,6 +345,7 @@ export default function App() {
   async function saveProjectFile() {
     try {
       await invoke("write_project_file", { path: fileName, content: text });
+      setSavedProjectContents(current => ({ ...current, [fileName]: text }));
       setMessage("Saved project file " + fileName);
       await refreshProject();
     } catch (error) { setMessage("Project save failed: " + String(error)); }
@@ -469,6 +477,26 @@ export default function App() {
       setFileName(name); setPanel("Explorer"); setMessage("Opened " + name);
     } catch (error) { setMessage("Open failed: " + String(error)); }
   }
+  async function saveAllOpenProjectFiles() {
+    const dirty = openTabs.filter(name => isProjectTabDirty(name));
+    if (!dirty.length) { setMessage("All open project tabs are saved."); return; }
+    if (!window.confirm("Save changes to " + dirty.length + " open project file(s)?")) return;
+    setGitBusy(true);
+    let saved = 0;
+    try {
+      for (const name of dirty) {
+        const body = files[name] ?? "";
+        await invoke("write_project_file", { path: name, content: body });
+        setSavedProjectContents(current => ({ ...current, [name]: body }));
+        saved += 1;
+      }
+      setMessage("Saved " + saved + " open project file(s).");
+      await refreshProject();
+    } catch (error) {
+      setMessage("Saved " + saved + " file(s); save stopped: " + String(error));
+    } finally { setGitBusy(false); }
+  }
+
   async function saveCurrentFile() {
     if (isTauri() && projectRoot && projectEntries.some(entry => entry.path === fileName && !entry.is_dir) && !nativePaths[fileName]) { await saveProjectFile(); return; }
     if (!isTauri()) { downloadFile(); return; }
@@ -647,7 +675,7 @@ export default function App() {
           : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
           : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
       </aside>
-      <main className="main"><div className="tabs">{openTabs.map(name => <div key={name} className={"tab " + (fileName === name ? "tab-active" : "tab-inactive")} onClick={() => setFileName(name)} title={name}><span className="file-icon">◇</span><span className="tab-name">{name}</span><button className="tab-close" aria-label={"Close " + name} title={"Close " + name} onClick={event => { event.stopPropagation(); closeEditorTab(name); }}>×</button></div>)}<div className="editor-actions"><span>{lineCount} lines</span><button onClick={downloadFile} title="Download current file">↓</button><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
+      <main className="main"><div className="tabs">{openTabs.map(name => <div key={name} className={"tab " + (fileName === name ? "tab-active" : "tab-inactive")} onClick={() => setFileName(name)} title={name}><span className="file-icon">◇</span><span className="tab-name">{name}</span>{isProjectTabDirty(name) && <span className="tab-dirty" title="Unsaved project changes" aria-label="Unsaved changes">●</span>}<button className="tab-close" aria-label={"Close " + name} title={"Close " + name} onClick={event => { event.stopPropagation(); closeEditorTab(name); }}>×</button></div>)}<div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => void saveAllOpenProjectFiles()} disabled={gitBusy || !openTabs.some(isProjectTabDirty)} title="Save all modified open project files">Save All</button><button onClick={downloadFile} title="Download current file">↓</button><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
         <div className="editor-wrap"><Editor height="100%" onMount={editor => { editorRef.current = editor; setCursorPosition({ line: editor.getPosition()?.lineNumber ?? 1, column: editor.getPosition()?.column ?? 1 }); editor.onDidChangeCursorPosition(event => setCursorPosition({ line: event.position.lineNumber, column: event.position.column })); }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: minimap }, fontSize: 13, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => { editorRef.current?.revealLineInCenter(item.lineNumber); editorRef.current?.setPosition({ lineNumber: item.lineNumber, column: item.column }); editorRef.current?.focus(); setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`); }}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
