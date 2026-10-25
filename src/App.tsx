@@ -88,8 +88,6 @@ export default function App() {
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
   const [lspSessionId, setLspSessionId] = useState<string | null>(null);
   const [lspReady, setLspReady] = useState(false);
-  const lspDocumentRef = useRef({ fileName, text, projectRoot });
-  lspDocumentRef.current = { fileName, text, projectRoot };
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">("terminal");
   const [searchTerm, setSearchTerm] = useState("");
   const [projectSearchResults, setProjectSearchResults] = useState<ProjectSearchResult[]>([]);
@@ -104,6 +102,8 @@ export default function App() {
   const [commandQuery, setCommandQuery] = useState("");
   const [commandSelectedIndex, setCommandSelectedIndex] = useState(0);
   const text = files[fileName] ?? "";
+  const lspDocumentRef = useRef({ fileName, text, projectRoot });
+  lspDocumentRef.current = { fileName, text, projectRoot };
   const paletteCommands: { id: string; label: string; run: () => void }[] = [
     { id: "open-project", label: "Open Project Folder", run: () => void openProjectFolder() },
     { id: "save-file", label: "Save Current File", run: () => void saveCurrentFile() },
