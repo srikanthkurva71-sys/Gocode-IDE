@@ -55,6 +55,9 @@ fn read_dap_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
         if line == "\r\n" || line == "\n" { break; }
         if let Some((name, value)) = line.split_once(':') {
             if name.trim().eq_ignore_ascii_case("Content-Length") {
+                if content_length.is_some() {
+                    return Err("Duplicate Content-Length header.".into());
+                }
                 let parsed = value.trim().parse::<usize>().map_err(|_| "Invalid DAP Content-Length header.".to_string())?;
                 if parsed > MAX_DAP_MESSAGE_BYTES { return Err("Debug-adapter message exceeds the 8 MiB safety limit.".into()); }
                 content_length = Some(parsed);
@@ -150,6 +153,13 @@ mod tests {
     use super::{read_dap_message, write_dap_message, MAX_DAP_MESSAGE_BYTES};
     use serde_json::json;
     use std::io::{BufReader, Cursor};
+
+    #[test]
+    fn rejects_duplicate_content_length_headers() {
+        let frame = b"Content-Length: 2\\r\\ncontent-length: 2\\r\\n\\r\\n{}";
+        let result = read_dap_message(&mut BufReader::new(Cursor::new(frame)));
+        assert!(result.unwrap_err().contains("Duplicate Content-Length"));
+    }
 
     #[test]
     fn parses_dap_frame_and_case_insensitive_header() {
