@@ -169,7 +169,7 @@ export default function App() {
     const executable = window.prompt("Enter the full path to a debug-adapter executable you installed and trust:");
     if (!executable?.trim()) return;
     const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
-    const launchText = window.prompt("Enter the adapter-specific launch configuration as JSON. Example for a Node adapter: {\\"program\\":\\"C:/path/to/app.js\\"}");
+    const launchText = window.prompt('Enter adapter-specific launch configuration as JSON (for example, {"program":"C:/path/to/app.js"}):');
     if (!launchText?.trim()) return;
     let launch: Record<string, unknown>;
     try {
