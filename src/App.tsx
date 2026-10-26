@@ -12,6 +12,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { validateExtensionManifest } from "./lib/extensionManifest";
 import { normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
+import { normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
@@ -88,6 +89,7 @@ export default function App() {
   const [pendingCursor, setPendingCursor] = useState<{ path: string; line: number } | null>(null);
   const [message, setMessage] = useState("Ready");
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
+  const [lspDiagnosticsByUri, setLspDiagnosticsByUri] = useState<Record<string, EditorDiagnostic[]>>({});
   const [lspSessionId, setLspSessionId] = useState<string | null>(null);
   const [lspReady, setLspReady] = useState(false);
   const [lspOutput, setLspOutput] = useState<string[]>([]);
@@ -308,8 +310,15 @@ export default function App() {
     lspOpenedDocuments.current.clear();
     lspDocumentVersion.current = 1;
     setEditorDiagnostics([]);
+    setLspDiagnosticsByUri({});
     setMessage("Language server stopped.");
   }
+
+  useEffect(() => {
+    if (!projectRoot) { setEditorDiagnostics([]); return; }
+    const uri = projectFileUri(projectRoot, fileName);
+    setEditorDiagnostics(lspDiagnosticsByUri[uri] ?? []);
+  }, [fileName, projectRoot, lspDiagnosticsByUri]);
 
   const lspDocumentVersion = useRef(1);
   const lspOpenedDocuments = useRef<Set<string>>(new Set());
@@ -354,10 +363,19 @@ export default function App() {
           setLspOutput(current => [...current, "← response #" + String(message.id) + ": " + JSON.stringify(message.result ?? message.error).slice(0, 900)].slice(-40));
         }
         if (message.method === "textDocument/publishDiagnostics") {
-          const params = message.params as { uri?: string; diagnostics?: Array<{ message?: string; range?: { start?: { line?: number; character?: number } }; severity?: number }> } | undefined;
-          const doc = lspDocumentRef.current;
-          if (params?.uri && doc.projectRoot && params.uri === projectFileUri(doc.projectRoot, doc.fileName)) {
-            setEditorDiagnostics((params.diagnostics ?? []).map(item => ({ message: item.message ?? "Language-server diagnostic", lineNumber: (item.range?.start?.line ?? 0) + 1, column: (item.range?.start?.character ?? 0) + 1, severity: item.severity === 1 ? 8 : item.severity === 2 ? 4 : 2 })));
+          const params = message.params as { uri?: string; diagnostics?: unknown } | undefined;
+          if (params?.uri) {
+            const markers = normalizeLspDiagnostics(params.diagnostics).map(item => ({
+              message: item.message,
+              lineNumber: item.lineNumber,
+              column: item.column,
+              severity: item.severity === "error" ? 8 : item.severity === "warning" ? 4 : item.severity === "hint" ? 1 : 2,
+            }));
+            setLspDiagnosticsByUri(current => ({ ...current, [params.uri!]: markers }));
+            const doc = lspDocumentRef.current;
+            if (doc.projectRoot && params.uri === projectFileUri(doc.projectRoot, doc.fileName)) {
+              setEditorDiagnostics(markers);
+            }
           }
         }
       }),
