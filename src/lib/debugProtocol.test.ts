@@ -37,7 +37,7 @@ describe("debug protocol response normalization", () => {
     const value = "x".repeat(5000);
     expect(normalizeDebugVariables({ body: { variables: [
       { name: "long", value, type: "String", variablesReference: 0 }, { value: "missing name" },
-    ] })).toEqual([{
+    ] } })).toEqual([{
       name: "long", value: "x".repeat(4000), type: "String", variablesReference: 0,
     }]);
   });
