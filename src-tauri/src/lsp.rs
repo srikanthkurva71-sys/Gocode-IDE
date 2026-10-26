@@ -82,7 +82,14 @@ fn read_lsp_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
     let mut header_bytes = 0usize;
     loop {
         let mut line = String::new();
-        let count = reader.read_line(&mut line).map_err(|e| format!("Cannot read language-server header: {e}"))?;
+        // Bound the read itself, not just the counter after read_line: a malicious
+        // or broken server must not be able to force an unbounded header allocation.
+        let remaining = 16 * 1024usize - header_bytes;
+        let count = reader.take((remaining + 1) as u64).read_line(&mut line)
+            .map_err(|e| format!("Cannot read language-server header: {e}"))?;
+        if count > remaining {
+            return Err("Language-server headers exceed the 16 KiB safety limit.".into());
+        }
         if count == 0 {
             if header_bytes == 0 { return Ok(None); }
             return Err("Language server closed in the middle of a header.".into());
