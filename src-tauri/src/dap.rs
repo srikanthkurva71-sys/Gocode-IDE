@@ -116,23 +116,8 @@ pub fn dap_start(app: AppHandle, state: State<'_, DapState>, executable: String,
         let _ = event_app.emit("dap-exited", serde_json::json!({"session_id": event_id}));
     });
     let mut session = DapSession { child, stdin };
-    write_dap_message(&mut session.stdin, &serde_json::json!({
-        "seq": 1,
-        "type": "request",
-        "command": "initialize",
-        "arguments": {
-            "clientID": "gocode-ide",
-            "clientName": "Gocode IDE",
-            "adapterID": "user-configured",
-            "locale": "en",
-            "linesStartAt1": true,
-            "columnsStartAt1": true,
-            "pathFormat": "path",
-            "supportsVariableType": true,
-            "supportsRunInTerminalRequest": false,
-            "supportsProgressReporting": true
-        }
-    }))?;
+    // The frontend sends initialize after subscribing to events so an immediate
+    // adapter response cannot race ahead of the UI listeners.
     state.sessions.lock().map_err(|_| "Debug-adapter state is unavailable.".to_string())?.insert(id.clone(), session);
     Ok(id)
 }
