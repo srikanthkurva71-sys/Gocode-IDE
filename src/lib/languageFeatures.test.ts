@@ -17,13 +17,13 @@ describe("LSP hover result normalization", () => {
 describe("LSP completion result normalization", () => {
   it("supports arrays and CompletionList results", () => {
     expect(normalizeCompletionResult({ isIncomplete: false, items: [
-      { label: "map", detail: "transform", documentation: { kind: "markdown", value: "Maps values" } },
+      { label: "map", insertText: "map(${1:value})", detail: "transform", documentation: { kind: "markdown", value: "Maps values" } },
       { label: "filter" },
       null,
       { detail: "no label" },
     ] })).toEqual([
-      { label: "map", detail: "transform", documentation: "Maps values" },
-      { label: "filter", detail: "", documentation: "" },
+      { label: "map", detail: "transform", documentation: "Maps values", insertText: "map(${1:value})" },
+      { label: "filter", detail: "", documentation: "", insertText: "filter" },
     ]);
   });
 
@@ -32,6 +32,7 @@ describe("LSP completion result normalization", () => {
     const result = normalizeCompletionResult(items);
     expect(result).toHaveLength(100);
     expect(result[0].detail).toHaveLength(1000);
+    expect(result[0].insertText).toBe("L0");
     expect(normalizeCompletionResult({ items: "invalid" })).toEqual([]);
   });
 });
