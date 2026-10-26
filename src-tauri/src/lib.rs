@@ -13,6 +13,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
 
 mod lsp;
+mod dap;
 use std::{
     fs,
     path::{Path, PathBuf},
@@ -621,6 +622,7 @@ pub fn run() {
     tauri::Builder::default()
         .manage(TerminalState::default())
         .manage(lsp::LspState::default())
+        .manage(dap::DapState::default())
         .manage(ProjectState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -628,6 +630,9 @@ pub fn run() {
             lsp::lsp_start,
             lsp::lsp_send,
             lsp::lsp_stop,
+            dap::dap_start,
+            dap::dap_send,
+            dap::dap_stop,
             start_terminal,
             write_terminal_input,
             resize_terminal,
