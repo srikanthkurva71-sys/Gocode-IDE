@@ -188,10 +188,9 @@ export default function App() {
     } catch (error) { setMessage("DAP request failed: " + String(error)); }
   }
 
-  async function toggleBreakpointAtCursor() {
-    if (!dapSessionId || !projectRoot) return;
+  async function toggleBreakpointAtLine(line: number) {
+    if (!dapSessionId || !projectRoot || !Number.isInteger(line) || line < 1) return;
     const lines = dapBreakpoints[fileName] ?? [];
-    const line = cursorPosition.line;
     const next = lines.includes(line) ? lines.filter(value => value !== line) : [...lines, line].sort((a, b) => a - b);
     setDapBreakpoints(current => ({ ...current, [fileName]: next }));
     const sourcePath = projectRoot.replace(/[\\/]+$/, "") + "/" + fileName.replace(/\\/g, "/");
@@ -201,6 +200,10 @@ export default function App() {
       sourceModified: false
     });
     setMessage((next.includes(line) ? "Added" : "Removed") + " breakpoint at " + fileName + ":" + line + ".");
+  }
+
+  async function toggleBreakpointAtCursor() {
+    await toggleBreakpointAtLine(cursorPosition.line);
   }
 
   async function startDebugAdapter() {
@@ -1063,7 +1066,7 @@ export default function App() {
       </aside>
       <main className="main"><div className="tabs">{openTabs.map(name => <div key={name} className={"tab " + (fileName === name ? "tab-active" : "tab-inactive")} onClick={() => setFileName(name)} title={name}><span className="file-icon">◇</span><span className="tab-name">{name}</span>{isProjectTabDirty(name) && <span className="tab-dirty" title="Unsaved project changes" aria-label="Unsaved changes">●</span>}<button className="tab-close" aria-label={"Close " + name} title={"Close " + name} onClick={event => { event.stopPropagation(); closeEditorTab(name); }}>×</button></div>)}<div className="editor-actions"><span>{lineCount} lines</span><button onClick={() => void saveAllOpenProjectFiles()} disabled={gitBusy || !openTabs.some(isProjectTabDirty)} title="Save all modified open project files">Save All</button><button onClick={downloadFile} title="Download current file">↓</button><button onClick={() => setShowTerminal(v => !v)} title="Toggle terminal">⌄</button></div></div>
         {showFind && <div className="findbar"><input aria-label="Find text" placeholder="Find text" value={findText} onChange={e => setFindText(e.target.value)} /><input aria-label="Replace text" placeholder="Replace with" value={replaceText} onChange={e => setReplaceText(e.target.value)} /><button onClick={replaceAll}>Replace all</button><button onClick={() => setShowFind(false)} title="Close find">×</button></div>}
-        <div className="editor-wrap"><Editor height="100%" onMount={editor => { editorRef.current = editor; setCursorPosition({ line: editor.getPosition()?.lineNumber ?? 1, column: editor.getPosition()?.column ?? 1 }); editor.onDidChangeCursorPosition(event => setCursorPosition({ line: event.position.lineNumber, column: event.position.column })); }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, minimap: { enabled: minimap }, fontSize, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
+        <div className="editor-wrap"><Editor height="100%" onMount={(editor, monaco) => { editorRef.current = editor; setCursorPosition({ line: editor.getPosition()?.lineNumber ?? 1, column: editor.getPosition()?.column ?? 1 }); editor.onDidChangeCursorPosition(event => setCursorPosition({ line: event.position.lineNumber, column: event.position.column })); editor.onMouseDown(event => { if (event.target.type === monaco.editor.MouseTargetType.GUTTER_GLYPH_MARGIN && event.target.position) { setCursorPosition({ line: event.target.position.lineNumber, column: 1 }); void toggleBreakpointAtLine(event.target.position.lineNumber); } }); }} language={languageForFile(fileName)} value={text} theme="vs-dark" onValidate={markers => setEditorDiagnostics(markers.map(marker => ({ message: marker.message, lineNumber: marker.startLineNumber, column: marker.startColumn, severity: marker.severity })))} onChange={value => setFiles(current => ({ ...current, [fileName]: value ?? "" }))} options={{ automaticLayout: true, glyphMargin: true, minimap: { enabled: minimap }, fontSize, tabSize: 2, wordWrap: wordWrap ? "on" : "off", scrollBeyondLastLine: false, renderLineHighlight: "all", padding: { top: 14, bottom: 16 }, smoothScrolling: true, bracketPairColorization: { enabled: true } }} /></div>
         <div className={"bottom " + (!showTerminal ? "collapsed" : "")}><div className="bottom-tabs"><button className={bottomPanel === "problems" ? "bottom-active" : ""} onClick={() => setBottomPanel("problems")}>PROBLEMS <span>{editorDiagnostics.length}</span></button><button onClick={() => { setBottomPanel("terminal"); setShowTerminal(true); }}>TERMINAL</button><button className="push" onClick={() => setShowTerminal(false)}>×</button></div>{bottomPanel === "problems" ? <div className="terminal-body">{editorDiagnostics.length ? editorDiagnostics.map((item, index) => <button className="search-result" key={index} onClick={() => { editorRef.current?.revealLineInCenter(item.lineNumber); editorRef.current?.setPosition({ lineNumber: item.lineNumber, column: item.column }); editorRef.current?.focus(); setMessage(`${fileName}:${item.lineNumber}:${item.column} — ${item.message}`); }}><strong>{item.severity === 8 ? "Error" : item.severity === 4 ? "Warning" : "Info"}</strong> {item.message}<small>{fileName}:{item.lineNumber}:{item.column}</small></button>) : <div className="terminal-note">No diagnostics reported by the editor for this file. Full language-server diagnostics are not yet implemented.</div>}</div> : showTerminal && (isTauri() ? <div className="terminal-host" ref={terminalHost} /> : <div className="terminal-body"><div><span className="prompt">›</span> Gocode IDE browser prototype</div><div className="terminal-note">A real system terminal is available in the installed desktop app. The browser preview cannot access your system shell.</div></div>)}</div>
       </main>
     </div>
