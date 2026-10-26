@@ -99,6 +99,7 @@ export default function App() {
   const [lspHoverText, setLspHoverText] = useState("");
   const [lspCompletions, setLspCompletions] = useState<LanguageFeatureItem[]>([]);
   const lspRequestSeq = useRef(2);
+  const lspRequestKinds = useRef<Record<number, string>>({});
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapOutput, setDapOutput] = useState<string[]>([]);
   const [dapThreadId, setDapThreadId] = useState(1);
@@ -301,6 +302,9 @@ export default function App() {
   async function sendLspRequest(method: string, params: Record<string, unknown>) {
     if (!lspSessionId || !lspReady || !projectRoot) return;
     const id = lspRequestSeq.current++;
+    lspRequestKinds.current[id] = method;
+    if (method === "textDocument/hover") setLspHoverText("");
+    if (method === "textDocument/completion") setLspCompletions([]);
     try {
       await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", id, method, params } });
       setLspOutput(current => [...current, "→ " + method + " (#" + id + ")"].slice(-40));
@@ -386,11 +390,13 @@ export default function App() {
           setLspOutput(current => [...current, "← response #" + String(message.id) + ": " + JSON.stringify(message.result ?? message.error).slice(0, 900)].slice(-40));
           if (message.error) {
             setMessage("Language-server request failed: " + String((message.error as { message?: string }).message ?? "Unknown error"));
-          } else if (message.method === undefined && message.id === lspRequestSeq.current - 1) {
+          } else if (message.method === undefined && (typeof message.id === "number" || typeof message.id === "string")) {
+            const requestKind = lspRequestKinds.current[Number(message.id)];
+            delete lspRequestKinds.current[Number(message.id)];
             const result = message.result;
-            if (result && typeof result === "object" && "contents" in result) {
+            if (requestKind === "textDocument/hover") {
               setLspHoverText(normalizeHoverResult(result));
-            } else if (Array.isArray(result) || (result && typeof result === "object" && "items" in result)) {
+            } else if (requestKind === "textDocument/completion") {
               setLspCompletions(normalizeCompletionResult(result));
             }
           }
