@@ -432,8 +432,8 @@ fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskR
             if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
             return Ok(TaskResult { command: format!("rustc {} → temporary executable", source), success: execution.status.success(), output: text });
         }
-        "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" => {
-            let compiler = if extension == "c" || extension == "h" { "cc" } else { "c++" };
+        "c" | "cpp" | "cc" | "cxx" => {
+            let compiler = if extension == "c" { "cc" } else { "c++" };
             let temp_root = std::env::temp_dir().join(format!("gocode-run-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
             fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
             let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
