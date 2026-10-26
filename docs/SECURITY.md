@@ -8,7 +8,7 @@ Gocode IDE must treat source repositories, project settings, build scripts, term
 - Closing the terminal panel requests termination of its PTY session. Process-tree cleanup and cancellation behavior require additional testing.
 - External AI/network features require explicit user action and disclosure of provider and data sent.
 - Telemetry is off by default. Redact credentials, tokens, environment variables, and secrets from logs.
-- Extension manifests are currently review-only declarations, not verified publisher identities or proof of permission safety. Executable extensions remain disabled until a restricted process boundary, capability grants, package validation, and security review are in place.
+- Extension manifests are currently review-only declarations, not verified publisher identities or proof of permission safety. Executable extensions remain disabled until a restricted process boundary, capability grants, package validation, and security review are in place. The manifest UI also shows heuristic risk labels for declared capabilities; these labels are advisory only and do not enforce access controls.
 - Audit dependencies and review advisories; avoid blind forced upgrades.
 - CI now builds the Windows MSI and performs a clean-runner install/launch/uninstall smoke test. This is not a substitute for manual testing on supported Windows versions.
 
