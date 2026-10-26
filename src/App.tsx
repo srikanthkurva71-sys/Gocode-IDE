@@ -10,6 +10,7 @@ import { useRef } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
+import { validateExtensionManifest } from "./lib/extensionManifest";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
@@ -389,15 +390,7 @@ export default function App() {
     if (file.size > 64 * 1024) { setExtensionError("Manifest exceeds the 64 KB limit."); return; }
     void file.text().then(raw => {
       try {
-        const value: unknown = JSON.parse(raw);
-        if (!value || typeof value !== "object" || Array.isArray(value)) throw new Error("Manifest must be a JSON object.");
-        const m = value as Record<string, unknown>;
-        for (const key of ["id", "name", "version", "publisher", "license", "description"]) {
-          if (typeof m[key] !== "string" || !(m[key] as string).trim()) throw new Error("Missing required text field: " + key);
-        }
-        if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{1,79}$/.test(m.id as string)) throw new Error("Extension id must be 2–80 characters using letters, numbers, dot, underscore, or hyphen.");
-        if (!Array.isArray(m.capabilities) || m.capabilities.some(x => typeof x !== "string" || x.length > 80)) throw new Error("capabilities must be an array of short strings.");
-        const manifest: ExtensionManifest = { id: m.id as string, name: m.name as string, version: m.version as string, publisher: m.publisher as string, license: m.license as string, description: m.description as string, capabilities: m.capabilities as string[] };
+        const manifest: ExtensionManifest = validateExtensionManifest(JSON.parse(raw));
         setExtensions(old => old.some(x => x.id === manifest.id) ? old.map(x => x.id === manifest.id ? manifest : x) : [...old, manifest]);
         setExtensionError("Manifest added for review. Its code has NOT been installed or executed.");
       } catch (error) { setExtensionError("Invalid manifest: " + String(error)); }
