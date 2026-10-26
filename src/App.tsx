@@ -88,6 +88,10 @@ export default function App() {
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
   const [lspSessionId, setLspSessionId] = useState<string | null>(null);
   const [lspReady, setLspReady] = useState(false);
+  const [dapSessionId, setDapSessionId] = useState<string | null>(null);
+  const [dapOutput, setDapOutput] = useState<string[]>([]);
+  const dapSeq = useRef(2);
+  const dapLaunchConfig = useRef<Record<string, unknown>>({});
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">("terminal");
   const [searchTerm, setSearchTerm] = useState("");
   const [projectSearchResults, setProjectSearchResults] = useState<ProjectSearchResult[]>([]);
@@ -149,6 +153,81 @@ export default function App() {
       setMessage("Language server started; waiting for initialization.");
     } catch (error) { setMessage("Could not start language server: " + String(error)); }
   }
+
+
+  async function sendDapRequest(command: string, args: Record<string, unknown> = {}) {
+    if (!dapSessionId) return;
+    const seq = dapSeq.current++;
+    try {
+      await invoke("dap_send", { sessionId: dapSessionId, message: { seq, type: "request", command, arguments: args } });
+      setDapOutput(current => [...current, `→ ${command} (#${seq})`].slice(-100));
+    } catch (error) { setMessage("DAP request failed: " + String(error)); }
+  }
+
+  async function startDebugAdapter() {
+    if (!isTauri()) { setMessage("Debug adapters are available only in the installed desktop app."); return; }
+    const executable = window.prompt("Enter the full path to a debug-adapter executable you installed and trust:");
+    if (!executable?.trim()) return;
+    const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
+    const launchText = window.prompt("Enter the adapter-specific launch configuration as JSON. Example for a Node adapter: {\\"program\\":\\"C:/path/to/app.js\\"}");
+    if (!launchText?.trim()) return;
+    let launch: Record<string, unknown>;
+    try {
+      const parsed: unknown = JSON.parse(launchText);
+      if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) throw new Error("Launch configuration must be a JSON object.");
+      launch = parsed as Record<string, unknown>;
+    } catch (error) { setMessage("Invalid launch configuration: " + String(error)); return; }
+    try {
+      if (dapSessionId) await invoke("dap_stop", { sessionId: dapSessionId });
+      dapLaunchConfig.current = launch;
+      dapSeq.current = 2;
+      setDapOutput([]);
+      const id = await invoke<string>("dap_start", { executable: executable.trim(), args: rawArgs.trim() ? rawArgs.trim().split(/\\s+/) : [] });
+      setDapSessionId(id);
+      setMessage("Debug adapter started; initializing DAP.");
+    } catch (error) { setMessage("Could not start debug adapter: " + String(error)); }
+  }
+
+  async function stopDebugAdapter() {
+    if (!dapSessionId) return;
+    try { await invoke("dap_stop", { sessionId: dapSessionId }); }
+    catch (error) { setMessage("Debug-adapter stop failed: " + String(error)); }
+    setDapSessionId(null);
+    setMessage("Debug adapter stopped.");
+  }
+
+  useEffect(() => {
+    if (!isTauri() || !dapSessionId) return;
+    let active = true;
+    let unlistenMessage: (() => void) | undefined;
+    let unlistenError: (() => void) | undefined;
+    let unlistenExit: (() => void) | undefined;
+    void Promise.all([
+      listen<{ session_id: string; message: Record<string, unknown> }>("dap-message", async event => {
+        if (!active || event.payload.session_id !== dapSessionId) return;
+        const message = event.payload.message;
+        const kind = String(message.type ?? "message");
+        const label = message.event ? String(message.event) : message.command ? String(message.command) : kind;
+        setDapOutput(current => [...current, `← ${label}: ${JSON.stringify(message).slice(0, 700)}`].slice(-100));
+        if (kind === "response" && message.command === "initialize" && message.success === true) {
+          await sendDapRequest("launch", dapLaunchConfig.current);
+        }
+        if (kind === "event" && message.event === "initialized") {
+          await sendDapRequest("configurationDone");
+        }
+      }),
+      listen<{ session_id: string; message: string }>("dap-error", event => {
+        if (active && event.payload.session_id === dapSessionId) setMessage("Debug-adapter error: " + event.payload.message);
+      }),
+      listen<{ session_id: string }>("dap-exited", event => {
+        if (active && event.payload.session_id === dapSessionId) { setDapSessionId(null); setMessage("Debug adapter exited."); }
+      })
+    ]).then(([message, error, exited]) => {
+      if (!active) { message(); error(); exited(); return; }
+      unlistenMessage = message; unlistenError = error; unlistenExit = exited;
+    });
+    return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
+  }, [dapSessionId]);
 
   async function stopLanguageServer() {
     if (!lspSessionId) return;
@@ -820,7 +899,7 @@ export default function App() {
           <div className="workspace-actions"><button onClick={exportWorkspace}>Export workspace backup</button><label className="import-button">Import backup<input type="file" accept=".json,application/json" onChange={importWorkspace} /></label></div>
         </> : panel === "Search" ? <div className="empty-panel"><label>Search workspace buffers</label><input value={searchTerm} onChange={e => setSearchTerm(e.target.value)} placeholder="Text to find" />{searchTerm && matches.map(([name]) => <button className="search-result" key={name} onClick={() => { setFileName(name); setPanel("Explorer"); }}>{name}<small>Open buffer</small></button>)}<hr /><strong>Search opened project</strong><p>Searches text files up to 1 MB, skips symlinks and common generated folders, and returns at most 200 matches.</p><button disabled={!projectRoot || projectSearchBusy || !searchTerm.trim()} onClick={() => void searchProject()}>{projectSearchBusy ? "Searching…" : "Search project files"}</button>{projectSearchResults.map((result, index) => <button className="search-result" key={result.path + ":" + result.line_number + ":" + index} onClick={() => { setPendingCursor({ path: result.path, line: result.line_number }); void openProjectEntry(result.path).then(() => setMessage(`Opened ${result.path} at line ${result.line_number}.`)); }}><span>{result.path}:{result.line_number}</span><small>{result.snippet}</small></button>)}</div>
           : panel === "Source Control" ? <div className="empty-panel"><strong>Git Source Control</strong><p>{projectRoot ? "Project: " + projectRoot : "Open a project folder first."}</p><button disabled={!projectRoot || gitBusy} onClick={() => void refreshGit()}>Refresh status / diff</button><button disabled={!projectRoot || gitBusy} onClick={() => void stageGitChanges()}>Stage all changes</button><input aria-label="Commit message" placeholder="Commit message" value={commitMessage} onChange={e => setCommitMessage(e.target.value)} /><button disabled={!projectRoot || !commitMessage.trim() || gitBusy} onClick={() => void commitGitChanges()}>Commit staged changes</button><div className="git-branch-controls"><label>Local branch<select aria-label="Local branch" value={selectedBranch} onChange={e => setSelectedBranch(e.target.value)} disabled={!projectRoot || gitBusy}>{gitBranches.map(branch => <option key={branch} value={branch}>{branch}</option>)}</select></label><button disabled={!projectRoot || !selectedBranch || gitBusy || selectedBranch === gitInfo?.branch} onClick={() => void checkoutGitBranch()}>Switch branch</button></div><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("pull")}>Pull (fast-forward only)</button><button disabled={!projectRoot || gitBusy} onClick={() => void syncGit("push")}>Push current branch to origin</button>{gitInfo && <><p>Branch: {gitInfo.branch || "(detached HEAD)"}</p><pre className="output-box">{gitInfo.output}</pre><pre className="output-box">{gitDiff}</pre></>}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Git actions run locally. Pull/push require a configured remote and may use the credentials configured in Git. Remote sync asks for confirmation; branch switching only targets existing local branches.</p></div>
-          : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><section className="extension-card"><strong>Language Server Protocol</strong><p>{lspSessionId ? (lspReady ? "Connected and initialized." : "Starting / initializing…") : "No language server connected."} Configure a local language-server executable you installed and trust. The IDE will launch it only after you press Start.</p><button disabled={!projectRoot || !isTauri()} onClick={() => void startLanguageServer()}>Start Language Server…</button><button disabled={!lspSessionId} onClick={() => void stopLanguageServer()}>Stop Language Server</button></section><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p><button disabled={!projectRoot || taskRunning || !projectEntries.some(entry => entry.path === fileName && !entry.is_dir)} onClick={() => void runCurrentSourceFile()}>Run Current File (Python / JS / Go)</button>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
+          : panel === "Run & Debug" ? <div className="empty-panel"><strong>Build &amp; Toolchains</strong><section className="extension-card"><strong>Language Server Protocol</strong><p>{lspSessionId ? (lspReady ? "Connected and initialized." : "Starting / initializing…") : "No language server connected."} Configure a local language-server executable you installed and trust. The IDE will launch it only after you press Start.</p><button disabled={!projectRoot || !isTauri()} onClick={() => void startLanguageServer()}>Start Language Server…</button><button disabled={!lspSessionId} onClick={() => void stopLanguageServer()}>Stop Language Server</button></section><section className="extension-card"><strong>Debug Adapter Protocol</strong><p>{dapSessionId ? "Debug adapter connected. Review the adapter event log below." : "Connect a locally installed DAP-compatible debugger. Adapter launch configuration is specific to the debugger you choose."}</p><button disabled={!isTauri()} onClick={() => void startDebugAdapter()}>Start Debug Adapter…</button><button disabled={!dapSessionId} onClick={() => void sendDapRequest("continue", { threadId: 1 })}>Continue</button><button disabled={!dapSessionId} onClick={() => void sendDapRequest("pause", { threadId: 1 })}>Pause</button><button disabled={!dapSessionId} onClick={() => void sendDapRequest("disconnect", { restart: false })}>Disconnect</button><button disabled={!dapSessionId} onClick={() => void stopDebugAdapter()}>Stop Adapter</button>{dapOutput.length > 0 && <pre className="output-box">{dapOutput.join("\\n")}</pre>}</section><p>{projectRoot ? "Detected project tasks:" : "Open a project folder first."}</p><button disabled={!projectRoot || taskRunning || !projectEntries.some(entry => entry.path === fileName && !entry.is_dir)} onClick={() => void runCurrentSourceFile()}>Run Current File (Python / JS / Go)</button>{tasks.map(task => <button key={task} disabled={!projectRoot || taskRunning} onClick={() => void runTask(task)}>{taskRunning ? "Running…" : "Run " + task}</button>)}{taskOutput && <pre className="output-box">{taskOutput}</pre>}<p>Runs fixed, detected build/test commands without shell interpolation. Install the relevant toolchain and make it available on PATH.</p><p>Interactive debugging is not implemented yet.</p></div>
           : panel === "Extensions" ? <div className="empty-panel"><strong>Extension manifest registry</strong><p>Import JSON to review an extension's identity, publisher, license, and requested capabilities. This prototype does not install or execute extension code.</p><label className="import-button">Import manifest JSON<input type="file" accept=".json,application/json" onChange={importExtensionManifest} /></label>{extensionError && <p role="status">{extensionError}</p>}{extensions.map(ext => <section className="extension-card" key={ext.id}><strong>{ext.name} <small>v{ext.version}</small></strong><p>{ext.description}</p><p>Publisher: {ext.publisher}</p><p>License: {ext.license}</p><p>Requested capabilities: {ext.capabilities.length ? ext.capabilities.join(", ") : "None declared"}</p><button onClick={() => setExtensions(old => old.filter(x => x.id !== ext.id))}>Remove manifest</button></section>)}<p>Manifest claims are not verified publisher identities or license compliance guarantees.</p></div>
           : <div className="empty-panel"><strong>Editor &amp; Privacy Settings</strong><label className="setting-row"><input type="checkbox" checked={wordWrap} onChange={e => setWordWrap(e.target.checked)} /> Word wrap</label><label className="setting-row"><input type="checkbox" checked={minimap} onChange={e => setMinimap(e.target.checked)} /> Editor minimap</label><label className="setting-row">Editor font size <input aria-label="Editor font size" type="number" min={10} max={24} value={fontSize} onChange={event => setFontSize(clampEditorFontSize(Number(event.target.value)))} /></label><p>Use Ctrl+= / Ctrl+- to change font size and Ctrl+0 to reset it. The size is saved with editor preferences.</p><p>Workspace buffers, editor preferences, and extension manifests are stored in this browser profile. Export a workspace backup before clearing browser data.</p><p>External project uploads are not performed by these features. Language-server intelligence, DAP debugging, and executable extension hosting still need implementation and security review.</p></div>}
       </aside>
