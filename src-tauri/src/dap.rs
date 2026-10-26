@@ -199,4 +199,12 @@ mod tests {
         assert!(text.starts_with("Content-Length: "));
         assert!(text.contains("\r\n\r\n{"));
     }
+
+    #[test]
+    fn rejects_unterminated_oversized_header_without_unbounded_read() {
+        let bytes = vec![b'A'; 20 * 1024];
+        let result = read_dap_message(&mut BufReader::new(Cursor::new(bytes)));
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("16 KiB"));
+    }
 }
