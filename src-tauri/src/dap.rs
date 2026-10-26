@@ -57,7 +57,13 @@ fn read_dap_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
     let mut header_bytes = 0usize;
     loop {
         let mut line = String::new();
-        let count = reader.read_line(&mut line).map_err(|e| format!("Cannot read DAP header: {e}"))?;
+        // Limit allocation while reading the line, not only after it is complete.
+        let remaining = 16 * 1024usize - header_bytes;
+        let count = reader.take((remaining + 1) as u64).read_line(&mut line)
+            .map_err(|e| format!("Cannot read DAP header: {e}"))?;
+        if count > remaining {
+            return Err("DAP headers exceed the 16 KiB safety limit.".into());
+        }
         if count == 0 {
             if header_bytes == 0 { return Ok(None); }
             return Err("Debug adapter closed in the middle of a header.".into());
