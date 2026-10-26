@@ -11,6 +11,7 @@ import { isTauri } from "@tauri-apps/api/core";
 import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialog";
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { validateExtensionManifest } from "./lib/extensionManifest";
+import { parseCommandLineArguments } from "./lib/commandLine";
 import { normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
 import { normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { reviewCapabilities } from "./lib/capabilityReview";
@@ -158,7 +159,9 @@ export default function App() {
     const executable = window.prompt("Enter the full path to a language-server executable you installed and trust:");
     if (!executable?.trim()) return;
     const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
-    const args = rawArgs.trim() ? rawArgs.trim().split(/\s+/) : [];
+    let args: string[];
+    try { args = parseCommandLineArguments(rawArgs); }
+    catch (error) { setMessage("Invalid executable arguments: " + String(error)); return; }
     try {
       if (lspSessionId) await invoke("lsp_stop", { sessionId: lspSessionId });
       const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
