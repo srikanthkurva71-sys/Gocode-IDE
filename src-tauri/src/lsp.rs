@@ -217,7 +217,7 @@ mod tests {
 
     #[test]
     fn rejects_duplicate_content_length_headers() {
-        let frame = b"Content-Length: 2\\r\\ncontent-length: 2\\r\\n\\r\\n{}";
+        let frame = b"Content-Length: 2\r\ncontent-length: 2\r\n\r\n{}";
         let result = read_lsp_message(&mut BufReader::new(Cursor::new(frame)));
         assert!(result.unwrap_err().contains("Duplicate Content-Length"));
     }
