@@ -18,6 +18,17 @@ pub struct DapState {
     sessions: Mutex<HashMap<String, DapSession>>,
 }
 
+impl Drop for DapState {
+    fn drop(&mut self) {
+        if let Ok(sessions) = self.sessions.get_mut() {
+            for (_, mut session) in sessions.drain() {
+                let _ = session.child.kill();
+                let _ = session.child.wait();
+            }
+        }
+    }
+}
+
 struct DapSession {
     child: Child,
     stdin: ChildStdin,
