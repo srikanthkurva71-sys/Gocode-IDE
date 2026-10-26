@@ -203,7 +203,10 @@ export default function App() {
     if (!isTauri()) { setMessage("Debug adapters are available only in the installed desktop app."); return; }
     const executable = window.prompt("Enter the full path to a debug-adapter executable you installed and trust:");
     if (!executable?.trim()) return;
-    const rawArgs = window.prompt("Optional executable arguments, separated by spaces (leave blank for none):", "") ?? "";
+    const rawArgs = window.prompt("Optional executable arguments (supports quoted arguments; leave blank for none):", "") ?? "";
+    let args: string[];
+    try { args = parseCommandLineArguments(rawArgs); }
+    catch (error) { setMessage("Invalid debug-adapter arguments: " + String(error)); return; }
     const launchText = window.prompt('Enter adapter-specific launch configuration as JSON (for example, {"program":"C:/path/to/app.js"}):');
     if (!launchText?.trim()) return;
     let launch: Record<string, unknown>;
@@ -217,7 +220,7 @@ export default function App() {
       dapLaunchConfig.current = launch;
       dapSeq.current = 2;
       setDapOutput([]);
-      const id = await invoke<string>("dap_start", { executable: executable.trim(), args: rawArgs.trim() ? rawArgs.trim().split(/\\s+/) : [] });
+      const id = await invoke<string>("dap_start", { executable: executable.trim(), args });
       setDapSessionId(id);
       setMessage("Debug adapter started; initializing DAP.");
     } catch (error) { setMessage("Could not start debug adapter: " + String(error)); }
