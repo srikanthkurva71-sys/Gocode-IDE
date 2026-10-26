@@ -347,6 +347,10 @@ export default function App() {
         const payload = event.payload;
         if (!active || payload.session_id !== lspSessionId) return;
         const message = payload.message;
+        if (message.id === 1 && message.error) {
+          setLspReady(false);
+          setMessage("Language server initialization failed: " + String((message.error as { message?: string }).message ?? "Unknown initialize error"));
+        }
         if (message.id === 1 && message.result && !lspReady) {
           try {
             await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "initialized", params: {} } });
@@ -403,6 +407,19 @@ export default function App() {
 
   function closeEditorTab(name: string) {
     if (isProjectTabDirty(name) && !window.confirm("\u201c" + name + "\u201d has unsaved changes. Close this tab anyway?")) return;
+    if (lspSessionId && lspReady && projectRoot) {
+      const uri = projectFileUri(projectRoot, name);
+      if (lspOpenedDocuments.current.has(uri)) {
+        void invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didClose", params: { textDocument: { uri } } } })
+          .catch(error => setMessage("Tab closed, but language-server close notification failed: " + String(error)));
+        lspOpenedDocuments.current.delete(uri);
+        setLspDiagnosticsByUri(current => {
+          const next = { ...current };
+          delete next[uri];
+          return next;
+        });
+      }
+    }
     setOpenTabs(current => {
       const next = current.filter(tab => tab !== name);
       if (fileName === name) {
