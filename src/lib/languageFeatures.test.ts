@@ -35,3 +35,28 @@ describe("LSP completion result normalization", () => {
     expect(normalizeCompletionResult({ items: "invalid" })).toEqual([]);
   });
 });
+
+
+import { normalizeDefinitionLocation } from "./languageFeatures";
+
+describe("LSP definition locations", () => {
+  it("normalizes a file Location inside the project", () => {
+    expect(normalizeDefinitionLocation({
+      uri: "file:///workspace/src/main.ts",
+      range: { start: { line: 8, character: 4 }, end: { line: 8, character: 9 } },
+    }, "/workspace")).toEqual({ path: "src/main.ts", line: 9, column: 5 });
+  });
+
+  it("supports LocationLink and Windows drive paths", () => {
+    expect(normalizeDefinitionLocation({
+      targetUri: "file:///C:/Work/demo/src/app.ts",
+      targetSelectionRange: { start: { line: 0, character: 0 }, end: { line: 0, character: 2 } },
+    }, "C:\\Work\\demo")).toEqual({ path: "src/app.ts", line: 1, column: 1 });
+  });
+
+  it("rejects outside-project paths, non-file URIs, and malformed results", () => {
+    expect(normalizeDefinitionLocation({ uri: "file:///workspace-other/secret.txt", range: { start: { line: 0, character: 0 } } }, "/workspace")).toBeNull();
+    expect(normalizeDefinitionLocation({ uri: "https://example.com/file", range: { start: { line: 0, character: 0 } } }, "/workspace")).toBeNull();
+    expect(normalizeDefinitionLocation(null, "/workspace")).toBeNull();
+  });
+});
