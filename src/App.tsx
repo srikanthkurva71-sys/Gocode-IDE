@@ -89,6 +89,7 @@ export default function App() {
   const [showTerminal, setShowTerminal] = useState(true);
   const terminalHost = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<MonacoEditor.IStandaloneCodeEditor | null>(null);
+  const breakpointDecorationIds = useRef<string[]>([]);
   const [pendingCursor, setPendingCursor] = useState<{ path: string; line: number } | null>(null);
   const [message, setMessage] = useState("Ready");
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
@@ -480,6 +481,20 @@ export default function App() {
     });
     setMessage("Closed editor tab " + name + ". The file was not deleted.");
   }
+
+  useEffect(() => {
+    const editor = editorRef.current;
+    const model = editor?.getModel();
+    if (!editor || !model) return;
+    const lines = (dapBreakpoints[fileName] ?? []).filter(line => line >= 1 && line <= model.getLineCount());
+    breakpointDecorationIds.current = editor.deltaDecorations(
+      breakpointDecorationIds.current,
+      lines.map(line => ({
+        range: { startLineNumber: line, startColumn: 1, endLineNumber: line, endColumn: 1 },
+        options: { glyphMarginClassName: "gocode-breakpoint-glyph", stickiness: 1 }
+      }))
+    );
+  }, [dapBreakpoints, fileName, text]);
 
   useEffect(() => {
     if (!pendingCursor || pendingCursor.path !== fileName || !editorRef.current) return;
