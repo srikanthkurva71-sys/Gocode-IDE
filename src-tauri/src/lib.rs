@@ -1,3 +1,5 @@
+mod lsp_protocol;
+
 use std::{
     collections::HashMap,
     io::{Read, Write},
