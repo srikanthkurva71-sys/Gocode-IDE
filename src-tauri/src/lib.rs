@@ -496,6 +496,17 @@ struct TerminalState {
     sessions: Mutex<HashMap<String, TerminalSession>>,
 }
 
+impl Drop for TerminalState {
+    fn drop(&mut self) {
+        if let Ok(sessions) = self.sessions.get_mut() {
+            for (_, mut session) in sessions.drain() {
+                let _ = session.child.kill();
+                let _ = session.child.wait();
+            }
+        }
+    }
+}
+
 struct TerminalSession {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
