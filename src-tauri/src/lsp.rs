@@ -19,6 +19,17 @@ pub struct LspState {
     sessions: Mutex<HashMap<String, LspSession>>,
 }
 
+impl Drop for LspState {
+    fn drop(&mut self) {
+        if let Ok(sessions) = self.sessions.get_mut() {
+            for (_, mut session) in sessions.drain() {
+                let _ = session.child.kill();
+                let _ = session.child.wait();
+            }
+        }
+    }
+}
+
 struct LspSession {
     child: Child,
     stdin: ChildStdin,
