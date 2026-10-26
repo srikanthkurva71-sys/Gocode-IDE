@@ -77,4 +77,8 @@ Compatibility with older Windows versions must remain unclaimed until built and 
 
 ## Current status
 
-As of the current development branch, frontend CI and the Windows MSI workflow pass, including Rust tests and the CI runner's install/launch/uninstall smoke test. LSP, DAP, and executable extension hosting remain unimplemented; manual testing on a real Windows device and release approval remain outstanding.
+The development branch now contains experimental native LSP and DAP process integrations, bounded Content-Length framing, LSP initialization/document notifications/diagnostics, basic DAP requests and debugger data views, and frontend/Rust protocol tests. These are prototypes, not yet full production-ready language tooling or a complete debugger. The extension registry still reviews manifests only; third-party extension code is not executed.
+
+Latest frontend CI runs on commit `c33aba58` passed. The Windows MSI workflow for that commit is still running at the time this status was checked; a previous development commit's Windows MSI workflow passed Rust tests, packaging, dependency audit, and the CI runner install/launch/uninstall smoke test. Confirm the current workflow result before treating the latest commit as Windows-validated.
+
+Remaining acceptance work includes mock-server/adapter integration tests, protocol lifecycle and crash handling, adapter interoperability, executable extension-host design and security review, manual testing on a real Windows device, and release approval. Keep older Windows compatibility and Microsoft Store readiness unclaimed until verified.
