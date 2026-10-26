@@ -282,6 +282,15 @@ export default function App() {
     ]).then(([message, error, exited]) => {
       if (!active) { message(); error(); exited(); return; }
       unlistenMessage = message; unlistenError = error; unlistenExit = exited;
+      // Subscribe before sending initialize; some adapters respond immediately.
+      void invoke("dap_send", { sessionId: dapSessionId, message: {
+        seq: 1, type: "request", command: "initialize",
+        arguments: {
+          clientID: "gocode-ide", clientName: "Gocode IDE", adapterID: "user-configured",
+          locale: "en", linesStartAt1: true, columnsStartAt1: true, pathFormat: "path",
+          supportsVariableType: true, supportsRunInTerminalRequest: false, supportsProgressReporting: true
+        }
+      }}).catch(error => setMessage("Could not initialize debug adapter: " + String(error)));
     });
     return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
   }, [dapSessionId]);
@@ -399,6 +408,18 @@ export default function App() {
     ]).then(([message, error, exited]) => {
       if (!active) { message(); error(); exited(); return; }
       unlistenMessage = message; unlistenError = error; unlistenExit = exited;
+      // Subscribe before initialize to avoid losing a fast server's response.
+      if (lspSessionId && projectRoot) {
+        const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
+        void invoke("lsp_send", { sessionId: lspSessionId, message: {
+          jsonrpc: "2.0", id: 1, method: "initialize",
+          params: {
+            processId: null, rootUri,
+            capabilities: { textDocument: { publishDiagnostics: { relatedInformation: true }, synchronization: { didSave: true } } },
+            clientInfo: { name: "Gocode IDE", version: "0.1.0" }
+          }
+        }}).catch(error => setMessage("Could not initialize language server: " + String(error)));
+      }
     });
     return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
   }, [lspSessionId, lspReady]);
