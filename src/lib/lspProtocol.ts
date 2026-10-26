@@ -1,5 +1,7 @@
 /** Small, bounded JSON-RPC/LSP framing helpers. These do not launch a language server. */
 export const MAX_LSP_MESSAGE_BYTES = 8 * 1024 * 1024;
+const MAX_LSP_HEADER_BYTES = 1024;
+const MAX_LSP_BUFFER_BYTES = MAX_LSP_MESSAGE_BYTES + MAX_LSP_HEADER_BYTES + 4;
 
 export type LspFrameResult =
   | { ok: true; messages: string[]; remainder: string }
@@ -27,7 +29,7 @@ export function decodeLspFrames(input: string): LspFrameResult {
   while (buffer.length) {
     const separator = buffer.indexOf("\r\n\r\n");
     if (separator < 0) {
-      if (new TextEncoder().encode(buffer).byteLength > 1024) {
+      if (new TextEncoder().encode(buffer).byteLength > MAX_LSP_HEADER_BYTES) {
         return { ok: false, error: "LSP header exceeded 1024 bytes.", remainder: "" };
       }
       return { ok: true, messages, remainder: buffer };
@@ -59,7 +61,13 @@ export function decodeLspFrames(input: string): LspFrameResult {
       bytes += new TextEncoder().encode(character).byteLength;
       bodyEnd += character.length;
     }
-    if (bytes < length) return { ok: true, messages, remainder: buffer };
+    if (bytes < length) {
+      // Retain incomplete frames between chunks, but never keep an unbounded remainder.
+      if (new TextEncoder().encode(buffer).byteLength > MAX_LSP_BUFFER_BYTES) {
+        return { ok: false, error: "Buffered LSP frame exceeded the maximum message size.", remainder: "" };
+      }
+      return { ok: true, messages, remainder: buffer };
+    }
     if (bytes !== length) return { ok: false, error: "LSP body ended inside a UTF-8 character.", remainder: "" };
 
     messages.push(buffer.slice(bodyStart, bodyEnd));
