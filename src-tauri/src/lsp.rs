@@ -30,6 +30,30 @@ struct LspEvent {
     message: Value,
 }
 
+fn percent_decode_uri_path(input: &str) -> Result<String, String> {
+    let bytes = input.as_bytes();
+    let mut decoded = Vec::with_capacity(bytes.len());
+    let mut index = 0;
+    while index < bytes.len() {
+        if bytes[index] == b'%' {
+            if index + 2 >= bytes.len() {
+                return Err("Invalid percent escape in language-server file URI.".into());
+            }
+            let hex = std::str::from_utf8(&bytes[index + 1..index + 3])
+                .map_err(|_| "Invalid percent escape in language-server file URI.".to_string())?;
+            let value = u8::from_str_radix(hex, 16)
+                .map_err(|_| "Invalid percent escape in language-server file URI.".to_string())?;
+            decoded.push(value);
+            index += 3;
+        } else {
+            decoded.push(bytes[index]);
+            index += 1;
+        }
+    }
+    String::from_utf8(decoded)
+        .map_err(|_| "Language-server file URI path is not valid UTF-8.".into())
+}
+
 fn write_lsp_message(writer: &mut impl Write, message: &Value) -> Result<(), String> {
     let body = serde_json::to_vec(message).map_err(|e| format!("Cannot encode LSP message: {e}"))?;
     if body.len() > MAX_LSP_MESSAGE_BYTES {
@@ -95,7 +119,7 @@ pub fn lsp_start(
         if let Some(path) = uri.strip_prefix("file://") {
             #[cfg(windows)]
             let path = path.strip_prefix('/').filter(|value| value.as_bytes().get(1) == Some(&b':')).unwrap_or(path);
-            let decoded = path.replace("%20", " ");
+            let decoded = percent_decode_uri_path(path)?;
             let root = PathBuf::from(decoded);
             if root.is_dir() { command.current_dir(root); }
         }
@@ -171,9 +195,22 @@ pub fn lsp_stop(state: State<'_, LspState>, session_id: String) -> Result<(), St
 
 #[cfg(test)]
 mod tests {
-    use super::{read_lsp_message, write_lsp_message, MAX_LSP_MESSAGE_BYTES};
+    use super::{percent_decode_uri_path, read_lsp_message, write_lsp_message, MAX_LSP_MESSAGE_BYTES};
     use serde_json::json;
     use std::io::{BufReader, Cursor};
+
+    #[test]
+    fn decodes_percent_encoded_uri_paths() {
+        assert_eq!(percent_decode_uri_path("/tmp/a%20folder/file%23one.rs").unwrap(), "/tmp/a folder/file#one.rs");
+        assert_eq!(percent_decode_uri_path("/tmp/%E2%9C%93.rs").unwrap(), "/tmp/✓.rs");
+    }
+
+    #[test]
+    fn rejects_invalid_percent_encoded_uri_paths() {
+        assert!(percent_decode_uri_path("/tmp/%").is_err());
+        assert!(percent_decode_uri_path("/tmp/%GG").is_err());
+        assert!(percent_decode_uri_path("/tmp/%FF").is_err());
+    }
 
     #[test]
     fn parses_message_and_case_insensitive_header() {
