@@ -263,6 +263,17 @@ export default function App() {
     }
   }
 
+  async function notifyLspDocumentSaved(name: string) {
+    if (!lspReady || !lspSessionId || !projectRoot) return;
+    const uri = projectFileUri(projectRoot, name);
+    if (!lspOpenedDocuments.current.has(uri)) return;
+    try {
+      await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didSave", params: { textDocument: { uri }, text: name === fileName ? text : files[name] ?? "" } } });
+    } catch (error) {
+      setMessage("File saved, but language-server save notification failed: " + String(error));
+    }
+  }
+
   async function stopLanguageServer() {
     if (!lspSessionId) return;
     try { await invoke("lsp_stop", { sessionId: lspSessionId }); }
@@ -590,6 +601,7 @@ export default function App() {
   async function saveProjectFile() {
     try {
       await invoke("write_project_file", { path: fileName, content: text });
+      await notifyLspDocumentSaved(fileName);
       setSavedProjectContents(current => ({ ...current, [fileName]: text }));
       setMessage("Saved project file " + fileName);
       await refreshProject();
@@ -752,6 +764,7 @@ export default function App() {
       for (const name of dirty) {
         const body = files[name] ?? "";
         await invoke("write_project_file", { path: name, content: body });
+        await notifyLspDocumentSaved(name);
         setSavedProjectContents(current => ({ ...current, [name]: body }));
         saved += 1;
       }
