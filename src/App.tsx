@@ -14,7 +14,7 @@ import { validateExtensionManifest } from "./lib/extensionManifest";
 import { parseCommandLineArguments } from "./lib/commandLine";
 import { normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
 import { normalizeLspDiagnostics } from "./lib/languageProtocol";
-import { normalizeCompletionResult, normalizeHoverResult, type LanguageFeatureItem } from "./lib/languageFeatures";
+import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverResult, type LanguageFeatureItem } from "./lib/languageFeatures";
 import { reviewCapabilities } from "./lib/capabilityReview";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
@@ -402,6 +402,19 @@ export default function App() {
               setLspHoverText(normalizeHoverResult(result));
             } else if (requestKind === "textDocument/completion") {
               setLspCompletions(normalizeCompletionResult(result));
+            } else if (requestKind === "textDocument/definition" && projectRoot) {
+              const location = normalizeDefinitionLocation(result, projectRoot);
+              if (location) {
+                setPendingCursor({ path: location.path, line: location.line });
+                setFileName(location.path);
+                setMessage("Go to definition: " + location.path + ":" + location.line + ":" + location.column);
+                window.setTimeout(() => {
+                  editorRef.current?.setPosition({ lineNumber: location.line, column: location.column });
+                  editorRef.current?.revealPositionInCenter({ lineNumber: location.line, column: location.column });
+                }, 0);
+              } else {
+                setMessage("Language server returned no project-local definition location.");
+              }
             }
           }
         }
