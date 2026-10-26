@@ -1,4 +1,4 @@
-export type LanguageFeatureItem = { label: string; detail: string; documentation: string };
+export type LanguageFeatureItem = { label: string; detail: string; documentation: string; insertText: string };
 
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value !== null && typeof value === "object" && !Array.isArray(value)
@@ -34,6 +34,7 @@ export function normalizeCompletionResult(value: unknown): LanguageFeatureItem[]
       label: item.label.slice(0, 300),
       detail: typeof item.detail === "string" ? item.detail.slice(0, 1000) : "",
       documentation: textValue(item.documentation, 2000),
+      insertText: typeof item.insertText === "string" ? item.insertText.slice(0, 2000) : item.label.slice(0, 300),
     }];
   });
 }
