@@ -147,6 +147,8 @@ export default function App() {
     try {
       if (lspSessionId) await invoke("lsp_stop", { sessionId: lspSessionId });
       const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
+      lspOpenedDocuments.current.clear();
+      lspDocumentVersion.current = 1;
       const id = await invoke<string>("lsp_start", { executable: executable.trim(), args, rootUri });
       setLspSessionId(id);
       setLspReady(false);
@@ -235,16 +237,24 @@ export default function App() {
     catch (error) { setMessage("Language-server stop failed: " + String(error)); }
     setLspSessionId(null);
     setLspReady(false);
+    lspOpenedDocuments.current.clear();
+    lspDocumentVersion.current = 1;
     setEditorDiagnostics([]);
     setMessage("Language server stopped.");
   }
 
   const lspDocumentVersion = useRef(1);
+  const lspOpenedDocuments = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!lspReady || !lspSessionId || !projectRoot) return;
     const uri = projectFileUri(projectRoot, fileName);
     const version = ++lspDocumentVersion.current;
-    void invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didChange", params: { textDocument: { uri, version }, contentChanges: [{ text }] } } })
+    const method = lspOpenedDocuments.current.has(uri) ? "textDocument/didChange" : "textDocument/didOpen";
+    const params = method === "textDocument/didOpen"
+      ? { textDocument: { uri, languageId: languageForFile(fileName), version, text } }
+      : { textDocument: { uri, version }, contentChanges: [{ text }] };
+    lspOpenedDocuments.current.add(uri);
+    void invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method, params } })
       .catch(error => setMessage("Could not synchronize document with language server: " + String(error)));
   }, [text, fileName, projectRoot, lspReady, lspSessionId]);
 
@@ -266,6 +276,7 @@ export default function App() {
             if (doc.projectRoot) {
               const uri = projectFileUri(doc.projectRoot, doc.fileName);
               await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: languageForFile(doc.fileName), version: 1, text: doc.text } } } });
+              lspOpenedDocuments.current.add(uri);
               setLspReady(true);
               setMessage("Language server initialized for " + doc.fileName + ".");
             }
