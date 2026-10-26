@@ -82,6 +82,9 @@ fn read_lsp_message(reader: &mut impl BufRead) -> Result<Option<Value>, String> 
         if line == "\r\n" || line == "\n" { break; }
         if let Some((name, value)) = line.split_once(':') {
             if name.trim().eq_ignore_ascii_case("Content-Length") {
+                if content_length.is_some() {
+                    return Err("Duplicate Content-Length header.".into());
+                }
                 let parsed = value.trim().parse::<usize>()
                     .map_err(|_| "Invalid LSP Content-Length header.".to_string())?;
                 if parsed > MAX_LSP_MESSAGE_BYTES {
@@ -210,6 +213,13 @@ mod tests {
         assert!(percent_decode_uri_path("/tmp/%").is_err());
         assert!(percent_decode_uri_path("/tmp/%GG").is_err());
         assert!(percent_decode_uri_path("/tmp/%FF").is_err());
+    }
+
+    #[test]
+    fn rejects_duplicate_content_length_headers() {
+        let frame = b"Content-Length: 2\\r\\ncontent-length: 2\\r\\n\\r\\n{}";
+        let result = read_lsp_message(&mut BufReader::new(Cursor::new(frame)));
+        assert!(result.unwrap_err().contains("Duplicate Content-Length"));
     }
 
     #[test]
