@@ -166,23 +166,8 @@ pub fn lsp_start(
     });
 
     let mut session = LspSession { child, stdin };
-    let initialize = json!({
-        "jsonrpc": "2.0",
-        "id": 1,
-        "method": "initialize",
-        "params": {
-            "processId": std::process::id(),
-            "rootUri": root_uri,
-            "capabilities": {
-                "textDocument": {
-                    "publishDiagnostics": {"relatedInformation": true},
-                    "synchronization": {"didSave": true}
-                }
-            },
-            "clientInfo": {"name": "Gocode IDE", "version": env!("CARGO_PKG_VERSION")}
-        }
-    });
-    write_lsp_message(&mut session.stdin, &initialize)?;
+    // The frontend sends initialize only after subscribing to session events,
+    // preventing fast language servers from replying before listeners exist.
     state.sessions.lock().map_err(|_| "Language-server state is unavailable.".to_string())?
         .insert(id.clone(), session);
     Ok(id)
