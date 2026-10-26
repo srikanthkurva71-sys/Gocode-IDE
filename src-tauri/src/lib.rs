@@ -405,11 +405,57 @@ fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskR
     let canonical_file = relative.canonicalize().map_err(|e| format!("Could not resolve source file: {e}"))?;
     if !canonical_file.starts_with(&canonical_root) { return Err("Source file must stay inside the opened project.".into()); }
     let extension = canonical_file.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let source = canonical_file.to_string_lossy().into_owned();
     let (program, args): (&str, Vec<String>) = match extension.as_str() {
-        "py" => ("python", vec![canonical_file.to_string_lossy().into_owned()]),
-        "js" | "mjs" | "cjs" => ("node", vec![canonical_file.to_string_lossy().into_owned()]),
-        "go" => ("go", vec!["run".into(), canonical_file.to_string_lossy().into_owned()]),
-        _ => return Err("Run File supports Python, JavaScript, and Go files when their runtimes are installed.".into()),
+        "py" => ("python", vec![source.clone()]),
+        "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
+        "go" => ("go", vec!["run".into(), source.clone()]),
+        "rs" => {
+            let temp_root = std::env::temp_dir().join(format!("gocode-run-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+            fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
+            let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
+            let compile = Command::new("rustc").arg(&canonical_file).arg("-o").arg(&executable).current_dir(&canonical_root).output()
+                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not start rustc. Install Rust and ensure it is on PATH: {e}") })?;
+            let mut compile_text = String::from_utf8_lossy(&compile.stdout).to_string();
+            compile_text.push_str(&String::from_utf8_lossy(&compile.stderr));
+            if !compile.status.success() {
+                let _ = fs::remove_dir_all(&temp_root);
+                if compile_text.len() > 100_000 { compile_text.truncate(100_000); compile_text.push_str("\n[Output truncated]"); }
+                return Ok(TaskResult { command: format!("rustc {} -o <temporary executable>", source), success: false, output: compile_text });
+            }
+            let execution = Command::new(&executable).current_dir(&canonical_root).output()
+                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not launch compiled Rust program: {e}") });
+            let _ = fs::remove_dir_all(&temp_root);
+            let execution = execution?;
+            let mut text = String::from_utf8_lossy(&execution.stdout).to_string();
+            text.push_str(&String::from_utf8_lossy(&execution.stderr));
+            if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
+            return Ok(TaskResult { command: format!("rustc {} → temporary executable", source), success: execution.status.success(), output: text });
+        }
+        "c" | "cpp" | "cc" | "cxx" | "h" | "hpp" => {
+            let compiler = if extension == "c" || extension == "h" { "cc" } else { "c++" };
+            let temp_root = std::env::temp_dir().join(format!("gocode-run-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
+            fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
+            let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
+            let compile = Command::new(compiler).arg(&canonical_file).arg("-o").arg(&executable).current_dir(&canonical_root).output()
+                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not start {compiler}. Install a C/C++ compiler and ensure it is on PATH: {e}") })?;
+            let mut compile_text = String::from_utf8_lossy(&compile.stdout).to_string();
+            compile_text.push_str(&String::from_utf8_lossy(&compile.stderr));
+            if !compile.status.success() {
+                let _ = fs::remove_dir_all(&temp_root);
+                if compile_text.len() > 100_000 { compile_text.truncate(100_000); compile_text.push_str("\n[Output truncated]"); }
+                return Ok(TaskResult { command: format!("{compiler} {} -o <temporary executable>", source), success: false, output: compile_text });
+            }
+            let execution = Command::new(&executable).current_dir(&canonical_root).output()
+                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not launch compiled program: {e}") });
+            let _ = fs::remove_dir_all(&temp_root);
+            let execution = execution?;
+            let mut text = String::from_utf8_lossy(&execution.stdout).to_string();
+            text.push_str(&String::from_utf8_lossy(&execution.stderr));
+            if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
+            return Ok(TaskResult { command: format!("{compiler} {} → temporary executable", source), success: execution.status.success(), output: text });
+        }
+        _ => return Err("Run File supports Python, JavaScript, Go, Rust, C, and C++ files when their toolchains are installed.".into()),
     };
     let output = Command::new(program).args(&args).current_dir(&canonical_root).output()
         .map_err(|e| format!("Could not start {program}. Install the runtime and ensure it is on PATH: {e}"))?;
