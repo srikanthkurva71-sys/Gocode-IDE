@@ -1,0 +1,88 @@
+name: Windows MSI build
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/**"]
+    paths:
+      - "src-tauri/**"
+      - "scripts/**"
+      - "src/**"
+      - "package.json"
+      - "package-lock.json"
+      - "vite.config.ts"
+      - ".github/workflows/windows-msi.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-msi-v2-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-msi:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.x"
+      - name: Generate Windows application icon
+        run: python scripts/generate_icon.py
+      - name: Install frontend dependencies
+        run: npm ci
+      - name: Verify dependency audit
+        run: npm audit --audit-level=low
+      - name: Run Rust unit tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
+      - name: Build Windows MSI
+        run: npm run tauri -- build
+      - name: Install and launch smoke test
+        shell: pwsh
+        run: |
+          $msi = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi" | Select-Object -First 1
+          if (-not $msi) { throw "No MSI was produced for smoke testing." }
+          $installDir = Join-Path $env:RUNNER_TEMP "GocodeIDESmoke"
+          New-Item -ItemType Directory -Path $installDir -Force | Out-Null
+          $installArgs = "/i `"$($msi.FullName)`" /qn /norestart INSTALLDIR=`"$installDir`""
+          $install = Start-Process -FilePath "msiexec.exe" -ArgumentList $installArgs -Wait -PassThru
+          if ($install.ExitCode -ne 0) { throw "MSI installation failed with exit code $($install.ExitCode)." }
+          $exe = Get-ChildItem -Path $installDir -Filter "gocode-ide.exe" -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          if (-not $exe) { throw "Installed Gocode IDE executable was not found." }
+          $app = Start-Process -FilePath $exe.FullName -PassThru
+          Start-Sleep -Seconds 5
+          $app.Refresh()
+          if ($app.HasExited) { throw "Gocode IDE exited during launch smoke test with code $($app.ExitCode)." }
+          Stop-Process -Id $app.Id -Force
+          $uninstallArgs = "/x `"$($msi.FullName)`" /qn /norestart"
+          $uninstall = Start-Process -FilePath "msiexec.exe" -ArgumentList $uninstallArgs -Wait -PassThru
+          if ($uninstall.ExitCode -ne 0) { throw "MSI uninstall failed with exit code $($uninstall.ExitCode)." }
+      - name: Generate MSI SHA-256 checksum
+        shell: pwsh
+        run: |
+          $files = Get-ChildItem -Path "src-tauri/target/release/bundle/msi/*.msi"
+          if (-not $files) { throw "No MSI was produced." }
+          foreach ($file in $files) {
+            $hash = Get-FileHash $file.FullName -Algorithm SHA256
+            "$($hash.Hash)  $($file.Name)" | Out-File -FilePath "$($file.FullName).sha256" -Encoding ascii
+          }
+      - name: Upload MSI and checksum
+        uses: actions/upload-artifact@v4
+        with:
+          name: gocode-ide-windows-msi
+          path: |
+            src-tauri/target/release/bundle/msi/*.msi
+            src-tauri/target/release/bundle/msi/*.sha256
+          if-no-files-found: error

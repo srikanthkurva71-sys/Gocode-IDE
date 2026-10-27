@@ -1,0 +1,39 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Gocode IDE",
+  "version": "0.1.0",
+  "identifier": "com.gocode.ide",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "devUrl": "http://localhost:5173",
+    "beforeBuildCommand": "npm run build",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Gocode IDE",
+        "width": 1280,
+        "height": 800,
+        "minWidth": 800,
+        "minHeight": 600
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:"
+    },
+    "withGlobalTauri": false
+  },
+  "bundle": {
+    "active": true,
+    "targets": [
+      "msi"
+    ],
+    "category": "DeveloperTool",
+    "shortDescription": "Free local-first development environment",
+    "longDescription": "Gocode IDE is a free, local-first development environment. Desktop features are under active development.",
+    "icon": [
+      "icons/icon.ico"
+    ]
+  }
+}
