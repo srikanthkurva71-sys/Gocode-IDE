@@ -81,3 +81,23 @@ export function normalizeDefinitionLocation(value: unknown, projectRoot: string)
   }
   return null;
 }
+
+
+export type ReferenceLocation = DefinitionLocation;
+
+/** Normalize at most 200 LSP Location results, keeping only files within the open project. */
+export function normalizeReferenceLocations(value: unknown, projectRoot: string): ReferenceLocation[] {
+  if (!Array.isArray(value)) return [];
+  const results: ReferenceLocation[] = [];
+  const seen = new Set<string>();
+  for (const candidate of value.slice(0, 500)) {
+    const location = normalizeDefinitionLocation(candidate, projectRoot);
+    if (!location) continue;
+    const key = location.path.toLowerCase() + ":" + location.line + ":" + location.column;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    results.push(location);
+    if (results.length >= 200) break;
+  }
+  return results;
+}
