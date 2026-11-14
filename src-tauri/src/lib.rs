@@ -1,5 +1,8 @@
 mod extension_policy;
 mod lsp_protocol;
+mod task_runner;
+
+use task_runner::{bounded_output, resolve_project_task, TaskResult};
 
 use std::{
     collections::HashMap,
@@ -377,9 +380,6 @@ fn git_push_current_branch(state: State<'_, ProjectState>) -> Result<String, Str
     run_git(&root, &["push", "-u", "origin", "HEAD"])
 }
 
-#[derive(Serialize)]
-struct TaskResult { command: String, success: bool, output: String }
-
 #[tauri::command]
 fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, String> {
     let root = project_root(&state)?;
@@ -469,27 +469,19 @@ fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskR
 #[tauri::command]
 fn run_project_task(state: State<'_, ProjectState>, task: String) -> Result<TaskResult, String> {
     let root = project_root(&state)?;
-    let allowed: &[(&str, &str, &[&str])] = &[
-        ("npm run build", "npm", &["run", "build"]),
-        ("npm test", "npm", &["test"]),
-        ("cargo build", "cargo", &["build"]),
-        ("cargo test", "cargo", &["test"]),
-        ("python -m compileall .", "python", &["-m", "compileall", "."]),
-        ("make", "make", &[]),
-        ("go build ./...", "go", &["build", "./..."]),
-        ("go test ./...", "go", &["test", "./..."]),
-        ("cmake -S . -B build", "cmake", &["-S", ".", "-B", "build"]),
-    ];
-    let (program, args) = allowed.iter().find(|(label, _, _)| *label == task)
-        .map(|(_, program, args)| (*program, *args)).ok_or_else(|| "This project task is not supported.".to_string())?;
-    let output = Command::new(program).args(args).current_dir(&root).output()
-        .map_err(|e| format!("Could not start {program}. Install the toolchain and ensure it is on PATH: {e}"))?;
-    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
-    if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
-    Ok(TaskResult { command: task, success: output.status.success(), output: text })
+    let spec = resolve_project_task(&task)
+        .ok_or_else(|| "This project task is not supported.".to_string())?;
+    let output = Command::new(spec.program)
+        .args(spec.args)
+        .current_dir(&root)
+        .output()
+        .map_err(|e| format!("Could not start {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
+    Ok(TaskResult {
+        command: spec.label.to_string(),
+        success: output.status.success(),
+        output: bounded_output(&output.stdout, &output.stderr, 100_000),
+    })
 }
-
 
 #[derive(Default)]
 struct TerminalState {
