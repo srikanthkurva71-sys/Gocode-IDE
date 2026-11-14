@@ -16,6 +16,7 @@ import { normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads,
 import { normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverResult, normalizeReferenceLocations, type LanguageFeatureItem, type ReferenceLocation } from "./lib/languageFeatures";
 import { reviewCapabilities } from "./lib/capabilityReview";
+import { createFeedbackIssueUrl, type FeedbackCategory } from "./lib/feedback";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
@@ -1091,6 +1092,30 @@ export default function App() {
     };
     reader.readAsText(file); event.target.value = "";
   }
+  function sendFeedback() {
+    const categoryInput = window.prompt("Feedback type: bug, feature, or general", "general");
+    if (!categoryInput) return;
+    const normalized = categoryInput.trim().toLowerCase();
+    const category: FeedbackCategory = normalized === "bug"
+      ? "Bug report"
+      : normalized === "feature"
+        ? "Feature request"
+        : "General feedback";
+    const messageText = window.prompt("Describe your feedback. Do not include passwords, tokens, private project paths, or source code.");
+    if (!messageText?.trim()) return;
+    try {
+      const url = createFeedbackIssueUrl({
+        category,
+        message: messageText,
+        platform: isTauri() ? "Windows desktop" : "Browser preview",
+      });
+      window.open(url, "_blank", "noopener,noreferrer");
+      setMessage("Review your feedback in GitHub before submitting.");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Could not prepare feedback.");
+    }
+  }
+
   function replaceAll() {
     if (!findText) { setMessage("Enter text to find first."); return; }
     setFiles(current => ({ ...current, [fileName]: (current[fileName] ?? "").split(findText).join(replaceText) }));
@@ -1099,7 +1124,7 @@ export default function App() {
 
   return <div className="app">
     <header className="titlebar"><div className="brand"><img className="brand-logo" src="/gocode-logo.svg" alt="" /><span>Gocode <b>IDE</b></span></div><div className="title-center">Workspace <span className="muted">/</span> my-project</div><div className="window-actions"><span>—</span><span>□</span><span>×</span></div></header>
-    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => { if (isTauri()) void openNativeFile(); else document.getElementById("open-files-input")?.click(); }}>Open File</button><button onClick={() => isTauri() ? void openProjectFolder() : setMessage("Open project folder is available in the desktop app.")}>Open Project</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={() => void saveCurrentFile()}>Save File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><div className="menubar-right">Local-first · {projectRoot ? "Project open" : "No project"}</div></div>
+    <div className="menubar"><button onClick={() => { setNewFile(true); setPanel("Explorer"); }}>New File</button><button onClick={() => { if (isTauri()) void openNativeFile(); else document.getElementById("open-files-input")?.click(); }}>Open File</button><button onClick={() => isTauri() ? void openProjectFolder() : setMessage("Open project folder is available in the desktop app.")}>Open Project</button><input id="open-files-input" type="file" multiple hidden onChange={openFiles} /><button onClick={() => void saveCurrentFile()}>Save File</button><button onClick={downloadFile}>Download File</button><button onClick={() => { setPanel("Search"); setShowFind(true); }}>Find / Replace</button><button onClick={() => setShowTerminal(v => !v)}>Terminal Panel</button><button onClick={sendFeedback} title="Review and submit feedback through GitHub">Send Feedback</button><div className="menubar-right">Local-first · {projectRoot ? "Project open" : "No project"}</div></div>
     <div className="workarea">
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
