@@ -304,3 +304,13 @@ A public release requires:
 - Security, license, privacy, compatibility, and attribution review.
 - Verified publisher/signing identity, checksums, release notes, and rollback plan.
 - User approval before merging to `main`, publishing a release, or submitting to an app store.
+
+
+## 16. Publishing, support and feedback
+
+- The public project website and documentation are a static GitHub Pages site sourced from `docs-site/`; it is separate from the Windows desktop installer.
+- The current Windows CI MSI is a development packaging artifact. Microsoft Store distribution requires a Store-compatible MSIX, verified package identity, publisher signing, Partner Center metadata, certification and approval.
+- The workbench may offer a user-initiated feedback action that opens a prefilled, editable GitHub issue. Only user-entered text, app version and broad platform are included. Never attach source files, project paths, terminal output, secrets or credentials automatically.
+- Feedback submission occurs in the user's browser after review and authentication. The application must not embed a GitHub token or silently create issues.
+- Website deployment, signed desktop releases and Store submission are separate release pipelines with explicit approvals.
+- See [Publishing and Feedback Architecture](PUBLISHING_AND_FEEDBACK_ARCHITECTURE.md) for the operational workflow and acceptance criteria.
