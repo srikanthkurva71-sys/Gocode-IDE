@@ -16,6 +16,7 @@ Gocode IDE is a free, local-first development environment in active development.
 - [Product and technical architecture](docs/PRODUCT_ARCHITECTURE.md)
 - [Architecture decisions](docs/ARCHITECTURE_DECISIONS.md)
 - [Implementation roadmap](docs/IMPLEMENTATION_PLAN.md)
+- [Publishing, support, and GitHub feedback architecture](docs/PUBLISHING_AND_FEEDBACK_ARCHITECTURE.md)
 - [Security model](docs/SECURITY.md)
 - [Privacy principles](docs/PRIVACY.md)
 
@@ -59,6 +60,8 @@ The development branch currently has:
 - Experimental user-configured DAP process support: explicit adapter executable/arguments, JSON framing with message-size limits, initialize/launch/configurationDone flow, continue/pause requests, per-file breakpoint toggling at the editor cursor, thread listing, stack-trace/scopes requests, and an adapter event log. Dedicated call-stack and variable panes, launch-profile management, and end-to-end debugger tests are not implemented.
 - Windows MSI GitHub Actions workflow that is being tested.
 - Automated frontend type-check/build workflow.
+- User-initiated GitHub feedback link that pre-fills an editable issue with only the user's message, app version, and broad platform; no project content or credentials are attached.
+- Initial GitHub Pages static-site source and deployment workflow (deployment requires Pages to be enabled and the changes merged to the default branch).
 - Architecture, security, privacy, Windows compatibility, and release planning documents.
 
 **This is not yet a complete IDE.** The workbench remains an early prototype. Project-wide text search is implemented with bounded scanning and line-numbered matches; it is not a language-aware symbol search. Native open/save is implemented but still needs Windows runtime testing. The native terminal uses a PTY and xterm.js; its runtime behavior still needs a clean-Windows launch test. Git status/diff/stage/commit, local branch listing/switching, confirmed fast-forward pull/push, and initial fixed build-task adapters are implemented. Initial LSP and DAP process integrations are present, but remain experimental: users must install and explicitly configure a local language server/debug adapter, compatibility is adapter-dependent, and end-to-end tests across supported languages are outstanding. The Problems panel combines Monaco diagnostics with LSP-published diagnostics when connected; this does not guarantee complete language support. Executable extension hosting remains incomplete; imported manifests are review-only and never execute code. Project build/test tasks require confirmation because project commands can execute project-controlled code. Rust tests cover path validation, search, and protocol framing. The Windows MSI workflow includes Rust tests, MSI packaging, a clean-runner install/launch/uninstall smoke test, and checksum artifact generation. CI success is useful evidence, not a replacement for manual testing on supported Windows versions. Before release, continue reviewing dependency advisories and test filesystem, terminal, Git, upgrade/uninstall, and data-preservation behavior on real Windows installations.
