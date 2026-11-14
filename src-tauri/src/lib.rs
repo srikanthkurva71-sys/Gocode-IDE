@@ -1,3 +1,4 @@
+mod extension_policy;
 mod lsp_protocol;
 
 use std::{
