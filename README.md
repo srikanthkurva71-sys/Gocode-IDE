@@ -11,6 +11,16 @@ Gocode IDE is a free, local-first development environment in active development.
 - Prefer free/open-source extensions while clearly displaying publisher, license, and permissions.
 - Compatibility and release approval are claimed only after verification.
 
+## Architecture and engineering plan
+
+- [Product and technical architecture](docs/PRODUCT_ARCHITECTURE.md)
+- [Architecture decisions](docs/ARCHITECTURE_DECISIONS.md)
+- [Implementation roadmap](docs/IMPLEMENTATION_PLAN.md)
+- [Security model](docs/SECURITY.md)
+- [Privacy principles](docs/PRIVACY.md)
+
+These documents distinguish implemented behavior from planned and experimental capabilities. See the implementation roadmap for the current stage and acceptance gates.
+
 ## Current implementation status
 
 The development branch currently has:
