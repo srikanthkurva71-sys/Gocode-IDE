@@ -81,3 +81,14 @@ This plan follows the current repository and the Product Architecture. Work is d
 **Not implemented:** production extension execution host, marketplace, true OS sandboxing, complete test explorer, split editor groups, full workspace indexing, production updater, code signing, store certification.
 
 This classification must be updated only when code and tests demonstrate the change.
+
+
+## Stage 9 — Website, feedback and distribution
+- [x] Define GitHub Pages website source and deployment workflow (deployment awaits Pages configuration and default-branch merge).
+- [x] Add privacy-preserving, user-reviewed GitHub feedback issue link and validation tests.
+- [ ] Verify external-browser opening from a packaged Windows build.
+- [ ] Enable GitHub Pages in repository settings and verify the deployed URL.
+- [ ] Build a Store-compatible MSIX with stable package identity and validate publisher signing.
+- [ ] Prepare Partner Center listing assets, privacy/support URLs, declarations and release notes.
+- [ ] Submit for Microsoft Store certification only after clean-device validation and explicit approval.
+- Acceptance: feedback is reviewable before submission; Pages is live; Store package passes identity/signing and certification checks.
