@@ -132,6 +132,7 @@ src-tauri/
     lsp_protocol.rs       LSP framing/protocol helpers
     dap.rs                Native DAP child process sessions
     extension_policy.rs   Default-deny extension permission policy (not a host)
+    task_runner.rs        Fixed project-task registry and bounded output contract
   capabilities/
     default.json          Tauri WebView capability grants
   tauri.conf.json         Desktop window, CSP, bundle configuration
