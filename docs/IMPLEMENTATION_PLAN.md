@@ -10,7 +10,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Verify all current CI workflows on the architecture commit.
 
 ## Stage 1 — Native service modularity and contracts
-- [ ] Split the oversized Tauri command module into cohesive modules without behavior changes.
+- [ ] Split the oversized Tauri command module into cohesive modules without behavior changes.\n- [x] Extract fixed project-task resolution, result contracts, and bounded output formatting into a tested native module.
 - [ ] Introduce typed request/result/error structures for workspace, process, task, Git, LSP and DAP operations.
 - [ ] Add stable error categories while preserving actionable messages.
 - [ ] Add integration tests around native workspace operations and process cleanup.
