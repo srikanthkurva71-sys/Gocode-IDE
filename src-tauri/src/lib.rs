@@ -5,7 +5,7 @@ mod workspace_io;
 mod git_hunks;
 
 use task_runner::{resolve_project_task, run_bounded_command, run_bounded_command_controlled, TaskResult};
-use workspace_io::{atomic_write_file, verify_expected_contents};
+use workspace_io::{atomic_write_file, decode_project_text, encode_project_text, verify_expected_contents, ProjectFileRead, ProjectTextFormat};
 
 use std::{
     collections::HashMap,
@@ -214,14 +214,15 @@ fn search_project_files(
 }
 
 #[tauri::command]
-fn read_project_file(state: State<'_, ProjectState>, path: String) -> Result<String, String> {
+fn read_project_file(state: State<'_, ProjectState>, path: String) -> Result<ProjectFileRead, String> {
     let root = project_root(&state)?;
     let target = safe_relative_path(&root, &path)?;
     let canonical = fs::canonicalize(&target).map_err(|e| format!("Cannot read file: {e}"))?;
     if !canonical.starts_with(&root) || !canonical.is_file() { return Err("File is outside the project or is not a regular file.".into()); }
     let meta = fs::metadata(&canonical).map_err(|e| e.to_string())?;
     if meta.len() > 2_000_000 { return Err("File is larger than the 2 MB editor limit.".into()); }
-    fs::read_to_string(canonical).map_err(|e| format!("Cannot read text file (binary files are not supported): {e}"))
+    let bytes = fs::read(canonical).map_err(|e| format!("Cannot read file: {e}"))?;
+    decode_project_text(&bytes).map_err(|e| format!("Cannot read text file (UTF-8 text files only): {e}"))
 }
 
 #[tauri::command]
@@ -279,7 +280,7 @@ fn create_project_directory(state: State<'_, ProjectState>, path: String) -> Res
 }
 
 #[tauri::command]
-fn write_project_file(state: State<'_, ProjectState>, path: String, content: String, expected_content: Option<String>) -> Result<(), String> {
+fn write_project_file(state: State<'_, ProjectState>, path: String, content: String, expected_content: Option<String>, format: Option<ProjectTextFormat>) -> Result<(), String> {
     if content.len() > 2_000_000 {
         return Err("File is larger than the 2 MB editor limit.".into());
     }
@@ -306,7 +307,8 @@ fn write_project_file(state: State<'_, ProjectState>, path: String, content: Str
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("Cannot inspect target file: {error}")),
     }
-    atomic_write_file(&target, content.as_bytes()).map_err(|e| format!("Cannot save project file atomically: {e}"))
+    let bytes = encode_project_text(&content, format.unwrap_or_default());
+    atomic_write_file(&target, &bytes).map_err(|e| format!("Cannot save project file atomically: {e}"))
 }
 
 fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {

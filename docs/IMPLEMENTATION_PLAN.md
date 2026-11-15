@@ -23,8 +23,8 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Consolidate native project buffers and browser-local buffers behind explicit storage adapters.
 - [x] Add external-file-change detection using saved disk baselines; reject stale saves instead of silently overwriting external edits.
 - [x] Add atomic writes for native project saves.
-- [ ] Preserve original encoding and line-ending style during editor round-trips.
-- [ ] Add bounded local crash recovery and recovery UI.
+- [x] Preserve UTF-8 BOM and dominant LF/CRLF/CR newline style across native editor round-trips; reject invalid UTF-8 instead of silently corrupting bytes.
+- [x] Add bounded local project-buffer crash recovery snapshots and explicit restore confirmation; verify disk baselines and restore into the editor without writing to disk.
 - [ ] Add lazy/virtualized project tree and cancellable search.
 - Acceptance: tests cover dirty buffers, external modification, crash recovery, Unicode paths, traversal and symlink escape.
 
@@ -67,7 +67,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - Acceptance: documented tested server/adapter combinations; no claims beyond those combinations.
 
 ## Stage 6 — Git and collaboration workflow
-- [ ] Add hunk-level staging, unstage and discard with confirmation.
+- [x] Add hunk-level staging, unstage and discard with confirmation; validate patch bounds and test native Git stage/unstage/discard behavior.
 - [ ] Add commit history and diff navigation.
 - [ ] Improve branch switching safeguards and conflict reporting.
 - [ ] Test pull/push with a local remote and configured credential helper.
@@ -92,9 +92,9 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Current implementation classification
 
-**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, toolchain-aware task discovery for Node, Python, Go, Rust, CMake, Make, Maven, Gradle and .NET, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, manual LSP restart/recovery with duplicate-initialize protection, bounded automatic LSP crash and initialization-failure recovery, workspace-switch LSP shutdown, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, core DAP event lifecycle handling, best-effort DAP cancellation after request timeouts, validated session-only DAP launch/attach profiles, manifest review, CI MSI packaging.
+**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, toolchain-aware task discovery for Node, Python, Go, Rust, CMake, Make, Maven, Gradle and .NET, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, manual LSP restart/recovery with duplicate-initialize protection, bounded automatic LSP crash and initialization-failure recovery, workspace-switch LSP shutdown, bounded local project-buffer crash recovery with explicit restore confirmation and disk-baseline checks, UTF-8 BOM/newline-style preservation for native text files, hunk-level Git stage/unstage/discard with confirmation, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, core DAP event lifecycle handling, best-effort DAP cancellation after request timeouts, validated session-only DAP launch/attach profiles, manifest review, CI MSI packaging.
 
-**Experimental / incomplete:** LSP/DAP adapter interoperability, persistent LSP launch-profile recovery and real-server interoperability validation, debugger completeness, DAP cancellation depends on adapter support and is best-effort, launch profiles currently reset when the app closes, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
+**Experimental / incomplete:** LSP/DAP adapter interoperability, persistent LSP launch-profile recovery and real-server interoperability validation, debugger completeness, DAP cancellation depends on adapter support and is best-effort, launch profiles currently reset when the app closes, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), recovery restore still needs a packaged-app restart smoke test; snapshots are limited to 25 open dirty native project files and 5 MiB, stored locally, and only one pending project snapshot is retained; mixed-newline files use their dominant newline convention; task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
 
 **Not implemented:** production extension execution host, marketplace, true OS sandboxing, complete test explorer, split editor groups, full workspace indexing, production updater, code signing, store certification.
 

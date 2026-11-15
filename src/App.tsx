@@ -28,6 +28,8 @@ import { createWorkspaceRecoverySnapshot, parseWorkspaceRecoverySnapshot, type W
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
 type ProjectEntry = { path: string; is_dir: boolean; size: number };
+type ProjectTextFormat = { bom: boolean; line_ending: "lf" | "cr_lf" | "cr" };
+type ProjectFileRead = { content: string; format: ProjectTextFormat };
 type ProjectSearchResult = { path: string; line_number: number; snippet: string };
 type GitResult = { available: boolean; output: string; branch: string; dirty: boolean };
 type TaskResult = { command: string; success: boolean; output: string; timed_out?: boolean; cancelled?: boolean };
@@ -79,6 +81,7 @@ export default function App() {
   const recoveryCheckStarted = useRef(false);
   const [nativePaths, setNativePaths] = useState<Record<string, string>>({});
   const [savedProjectContents, setSavedProjectContents] = useState<Record<string, string>>({});
+  const [projectFileFormats, setProjectFileFormats] = useState<Record<string, ProjectTextFormat>>({});
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
   const [collapsedProjectDirs, setCollapsedProjectDirs] = useState<Record<string, boolean>>({});
@@ -1027,15 +1030,15 @@ export default function App() {
     recoveryCheckStarted.current = true;
     let cancelled = false;
     void (async () => {
-      const candidates: Array<{ path: string; content: string; disk: string }> = [];
+      const candidates: Array<{ path: string; content: string; disk: string; format: ProjectTextFormat }> = [];
       const conflicts: string[] = [];
       const missing: string[] = [];
       for (const [path, item] of Object.entries(recoverySnapshot.files)) {
         if (cancelled) return;
         try {
-          const disk = await invoke<string>("read_project_file", { path });
-          if (disk !== item.baseline) conflicts.push(path);
-          candidates.push({ path, content: item.content, disk });
+          const diskFile = await invoke<ProjectFileRead>("read_project_file", { path });
+          if (diskFile.content !== item.baseline) conflicts.push(path);
+          candidates.push({ path, content: item.content, disk: diskFile.content, format: diskFile.format });
         } catch {
           missing.push(path);
         }
@@ -1053,6 +1056,7 @@ export default function App() {
           const currentBaselines = Object.fromEntries(candidates.map(item => [item.path, item.disk]));
           setFiles(current => ({ ...current, ...recoveredFiles }));
           setSavedProjectContents(current => ({ ...current, ...currentBaselines }));
+          setProjectFileFormats(current => ({ ...current, ...Object.fromEntries(candidates.map(item => [item.path, item.format])) }));
           setOpenTabs(current => [...new Set([...current, ...candidates.map(item => item.path)])]);
           setFileName(candidates[0].path);
           setMessage("Recovered " + candidates.length + " unsaved buffer(s). Review changes before saving.");
@@ -1246,9 +1250,11 @@ export default function App() {
   async function openProjectEntry(path: string) {
     if (isProjectTabDirty(path) && !window.confirm("\u201c" + path + "\u201d has unsaved changes. Reload from disk and discard them?")) return;
     try {
-      const contents = await invoke<string>("read_project_file", { path });
+      const file = await invoke<ProjectFileRead>("read_project_file", { path });
+      const contents = file.content;
       setFiles(current => ({ ...current, [path]: contents }));
       setSavedProjectContents(current => ({ ...current, [path]: contents }));
+      setProjectFileFormats(current => ({ ...current, [path]: file.format }));
       setFileName(path);
       setPanel("Explorer");
       setMessage("Opened project file " + path);
@@ -1256,7 +1262,7 @@ export default function App() {
   }
   async function saveProjectFile() {
     try {
-      await invoke("write_project_file", { path: fileName, content: text, expectedContent: savedProjectContents[fileName] ?? "" });
+      await invoke("write_project_file", { path: fileName, content: text, expectedContent: savedProjectContents[fileName] ?? "", format: projectFileFormats[fileName] });
       await notifyLspDocumentSaved(fileName);
       setSavedProjectContents(current => ({ ...current, [fileName]: text }));
       setMessage("Saved project file " + fileName);
@@ -1511,7 +1517,7 @@ export default function App() {
     try {
       for (const name of dirty) {
         const body = files[name] ?? "";
-        await invoke("write_project_file", { path: name, content: body, expectedContent: savedProjectContents[name] ?? "" });
+        await invoke("write_project_file", { path: name, content: body, expectedContent: savedProjectContents[name] ?? "", format: projectFileFormats[name] });
         await notifyLspDocumentSaved(name);
         setSavedProjectContents(current => ({ ...current, [name]: body }));
         saved += 1;
@@ -1545,7 +1551,8 @@ export default function App() {
     }
     if (isTauri() && projectRoot) {
       try {
-        await invoke("write_project_file", { path: name, content: "" });
+        await invoke("write_project_file", { path: name, content: "", format: { bom: false, line_ending: "lf" } });
+        setProjectFileFormats(current => ({ ...current, [name]: { bom: false, line_ending: "lf" } }));
         setFiles(current => ({ ...current, [name]: "" }));
         setSavedProjectContents(current => ({ ...current, [name]: "" }));
         setFileName(name); setDraftName(""); setNewFile(false); setPanel("Explorer");
