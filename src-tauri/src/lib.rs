@@ -337,7 +337,9 @@ fn git_diff(state: State<'_, ProjectState>) -> Result<String, String> {
 fn git_apply_hunk(state: State<'_, ProjectState>, patch: String, action: String) -> Result<String, String> {
     use std::process::Stdio;
 
-    git_hunks::validate_hunk_patch(&patch)?;\n    let args = git_hunks::apply_args(&action)?;\n    let root = project_root(&state)?;
+    git_hunks::validate_hunk_patch(&patch)?;
+    let args = git_hunks::apply_args(&action)?;
+    let root = project_root(&state)?;
     let mut child = Command::new("git")
         .arg("-C").arg(&root).args(args)
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
