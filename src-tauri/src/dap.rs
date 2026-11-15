@@ -258,9 +258,9 @@ mod tests {
             return;
         }
         let stdin = std::io::stdin();
-        let stdout = std::io::stdout();
+        let stderr = std::io::stderr();
         let mut reader = BufReader::new(stdin.lock());
-        let mut writer = stdout.lock();
+        let mut writer = stderr.lock();
 
         let initialize = read_dap_message(&mut reader).unwrap().unwrap();
         assert_eq!(initialize["type"], "request");
@@ -308,12 +308,12 @@ mod tests {
             .args(["--exact", "dap::tests::mock_debug_adapter_child_process", "--quiet", "--nocapture"])
             .env("GOCODE_IDE_MOCK_DAP_CHILD", "1")
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("start mock debug-adapter process");
         let mut input = child.stdin.take().unwrap();
-        let mut output = BufReader::new(child.stdout.take().unwrap());
+        let mut output = BufReader::new(child.stderr.take().unwrap());
 
         write_dap_message(&mut input, &json!({
             "seq": 1, "type": "request", "command": "initialize",

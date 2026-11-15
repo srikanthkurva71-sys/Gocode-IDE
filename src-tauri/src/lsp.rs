@@ -324,9 +324,9 @@ mod tests {
             return;
         }
         let stdin = std::io::stdin();
-        let stdout = std::io::stdout();
+        let stderr = std::io::stderr();
         let mut reader = BufReader::new(stdin.lock());
-        let mut writer = stdout.lock();
+        let mut writer = stderr.lock();
 
         let initialize = read_lsp_message(&mut reader).unwrap().unwrap();
         assert_eq!(initialize["method"], "initialize");
@@ -373,12 +373,12 @@ mod tests {
             .args(["--exact", "lsp::tests::mock_language_server_child_process", "--quiet", "--nocapture"])
             .env("GOCODE_IDE_MOCK_LSP_CHILD", "1")
             .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::inherit())
+            .stdout(Stdio::null())
+            .stderr(Stdio::piped())
             .spawn()
             .expect("start mock language-server process");
         let mut input = child.stdin.take().unwrap();
-        let mut output = BufReader::new(child.stdout.take().unwrap());
+        let mut output = BufReader::new(child.stderr.take().unwrap());
 
         write_lsp_message(&mut input, &json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
