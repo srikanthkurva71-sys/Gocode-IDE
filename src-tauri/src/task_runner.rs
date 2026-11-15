@@ -14,6 +14,8 @@ pub struct TaskResult {
     pub success: bool,
     pub output: String,
     pub timed_out: bool,
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -49,12 +51,14 @@ fn capture_reader(
     mut reader: impl Read + Send + 'static,
     capture: Arc<Mutex<OutputCapture>>,
     max_bytes: usize,
+    on_chunk: Arc<dyn Fn(String) + Send + Sync>,
 ) -> thread::JoinHandle<io::Result<()>> {
     thread::spawn(move || {
         let mut chunk = [0_u8; 8192];
         loop {
             let count = reader.read(&mut chunk)?;
             if count == 0 { break; }
+            on_chunk(String::from_utf8_lossy(&chunk[..count]).into_owned());
             if let Ok(mut output) = capture.lock() {
                 let remaining = max_bytes.saturating_sub(output.bytes.len());
                 let accepted = remaining.min(count);
@@ -179,11 +183,13 @@ fn terminate_process_tree(child: &mut Child) {
 
 /// Stream stdout/stderr into a bounded buffer and enforce a wall-clock timeout.
 /// On Windows, timeout termination also targets the process' descendant tree.
-pub fn run_bounded_command(
+fn run_bounded_command_impl(
     command: &mut Command,
     max_bytes: usize,
     timeout: Duration,
-) -> io::Result<(ExitStatus, String, bool)> {
+    cancel: Option<Arc<std::sync::atomic::AtomicBool>>,
+    on_output: Arc<dyn Fn(String) + Send + Sync>,
+) -> io::Result<(ExitStatus, String, bool, bool)> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     #[cfg(unix)]
     {
@@ -207,11 +213,11 @@ pub fn run_bounded_command(
     let stdout = child.stdout.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stdout pipe unavailable"))?;
     let stderr = child.stderr.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stderr pipe unavailable"))?;
     let capture = Arc::new(Mutex::new(OutputCapture::default()));
-    let stdout_reader = capture_reader(stdout, Arc::clone(&capture), max_bytes);
-    let stderr_reader = capture_reader(stderr, Arc::clone(&capture), max_bytes);
+    let stdout_reader = capture_reader(stdout, Arc::clone(&capture), max_bytes, Arc::clone(&on_output));
+    let stderr_reader = capture_reader(stderr, Arc::clone(&capture), max_bytes, on_output);
 
     let started = Instant::now();
-    let (status, timed_out) = loop {
+    let (status, timed_out, cancelled) = loop {
         if let Some(status) = child.try_wait()? {
             // A child may exit while a descendant still holds inherited stdout or
             // stderr handles. Terminate any remaining members of this task's
@@ -229,14 +235,21 @@ pub fn run_bounded_command(
                 // Terminate the assigned job before joining readers.
                 let _ = process_tree.terminate();
             }
-            break (status, false);
+            break (status, false, false);
+        }
+        if cancel.as_ref().is_some_and(|token| token.load(std::sync::atomic::Ordering::Relaxed)) {
+            #[cfg(windows)]
+            terminate_process_tree(&mut child, &process_tree);
+            #[cfg(not(windows))]
+            terminate_process_tree(&mut child);
+            break (child.wait()?, false, true);
         }
         if started.elapsed() >= timeout {
             #[cfg(windows)]
             terminate_process_tree(&mut child, &process_tree);
             #[cfg(not(windows))]
             terminate_process_tree(&mut child);
-            break (child.wait()?, true);
+            break (child.wait()?, true, false);
         }
         thread::sleep(Duration::from_millis(20));
     };
@@ -251,8 +264,34 @@ pub fn run_bounded_command(
     let mut text = String::from_utf8_lossy(&output.bytes).into_owned();
     if output.truncated { text.push_str("\n[Output truncated]"); }
     if timed_out { text.push_str("\n[Process timed out and was terminated]"); }
-    Ok((status, text, timed_out))
+    if cancelled { text.push_str("\n[Process cancelled by user]"); }
+    Ok((status, text, timed_out, cancelled))
 }
+
+
+/// Legacy bounded runner used by Run File and existing callers.
+pub fn run_bounded_command(
+    command: &mut Command,
+    max_bytes: usize,
+    timeout: Duration,
+) -> io::Result<(ExitStatus, String, bool)> {
+    let (status, output, timed_out, _cancelled) =
+        run_bounded_command_impl(command, max_bytes, timeout, None, Arc::new(|_| {}))?;
+    Ok((status, output, timed_out))
+}
+
+/// Cancellable runner for interactive project tasks. Output is delivered as UTF-8
+/// chunks while the process is running; the bounded aggregate is still returned.
+pub fn run_bounded_command_controlled(
+    command: &mut Command,
+    max_bytes: usize,
+    timeout: Duration,
+    cancel: Arc<std::sync::atomic::AtomicBool>,
+    on_output: Arc<dyn Fn(String) + Send + Sync>,
+) -> io::Result<(ExitStatus, String, bool, bool)> {
+    run_bounded_command_impl(command, max_bytes, timeout, Some(cancel), on_output)
+}
+
 
 #[cfg(test)]
 mod tests {
@@ -385,6 +424,50 @@ mod tests {
         assert!(timed_out);
         assert!(!status.success());
         assert!(output.contains("timed out"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn cancels_a_running_command_and_reaps_it() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let cancel = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&cancel);
+        let trigger = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            signal.store(true, Ordering::Relaxed);
+        });
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 10"]);
+        let (status, output, timed_out, cancelled) = run_bounded_command_controlled(
+            &mut command, 1024, Duration::from_secs(3), cancel, Arc::new(|_| {})
+        ).unwrap();
+        trigger.join().unwrap();
+        assert!(cancelled);
+        assert!(!timed_out);
+        assert!(!status.success());
+        assert!(output.contains("cancelled"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn cancels_a_running_command_and_reaps_it() {
+        use std::sync::atomic::{AtomicBool, Ordering};
+        let cancel = Arc::new(AtomicBool::new(false));
+        let signal = Arc::clone(&cancel);
+        let trigger = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(100));
+            signal.store(true, Ordering::Relaxed);
+        });
+        let mut command = Command::new("powershell.exe");
+        command.args(["-NoProfile", "-NonInteractive", "-Command", "Start-Sleep -Seconds 10"]);
+        let (status, output, timed_out, cancelled) = run_bounded_command_controlled(
+            &mut command, 1024, Duration::from_secs(3), cancel, Arc::new(|_| {})
+        ).unwrap();
+        trigger.join().unwrap();
+        assert!(cancelled);
+        assert!(!timed_out);
+        assert!(!status.success());
+        assert!(output.contains("cancelled"));
     }
 
 }

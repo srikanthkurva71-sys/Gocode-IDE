@@ -3,15 +3,15 @@ mod lsp_protocol;
 mod task_runner;
 mod workspace_io;
 
-use task_runner::{resolve_project_task, run_bounded_command, TaskResult};
+use task_runner::{resolve_project_task, run_bounded_command, run_bounded_command_controlled, TaskResult};
 use workspace_io::{atomic_write_file, verify_expected_contents};
 
 use std::{
     collections::HashMap,
     io::{Read, Write},
     sync::{
-        atomic::{AtomicU64, Ordering},
-        Mutex,
+        atomic::{AtomicBool, AtomicU64, Ordering},
+        Arc, Mutex,
     },
     thread,
 };
@@ -431,6 +431,7 @@ fn compile_and_run_source(
             success: false,
             output: compile_output,
             timed_out: compile_timed_out,
+            cancelled: false,
         });
     }
 
@@ -445,6 +446,7 @@ fn compile_and_run_source(
         success: status.success() && !timed_out,
         output,
         timed_out,
+        cancelled: false,
     })
 }
 
@@ -489,30 +491,86 @@ fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskR
                 success: status.success() && !timed_out,
                 output,
                 timed_out,
+                cancelled: false,
             })
         }
         _ => Err("Run File supports Python, JavaScript, Go, Rust, C, and C++ files when their toolchains are installed.".into()),
     }
 }
 
+#[derive(Default)]
+struct ProjectTaskState {
+    next_id: AtomicU64,
+    running: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
+}
+#[derive(Serialize)]
+struct TaskOutputEvent { task_id: String, data: String }
+#[derive(Serialize)]
+struct TaskProgressEvent { task_id: String, state: String }
+#[derive(Serialize)]
+struct TaskCompletedEvent { task_id: String, result: TaskResult }
+
 #[tauri::command]
-fn run_project_task(state: State<'_, ProjectState>, task: String) -> Result<TaskResult, String> {
-    let root = project_root(&state)?;
+fn start_project_task(
+    app: AppHandle,
+    project: State<'_, ProjectState>,
+    tasks: State<'_, ProjectTaskState>,
+    task: String,
+) -> Result<String, String> {
+    let root = project_root(&project)?;
     let spec = resolve_project_task(&task)
         .ok_or_else(|| "This project task is not supported.".to_string())?;
-    let mut command = Command::new(spec.program);
-    command.args(spec.args).current_dir(&root);
-    let (status, output, timed_out) = run_bounded_command(
-        &mut command,
-        100_000,
-        std::time::Duration::from_secs(15 * 60),
-    ).map_err(|e| format!("Could not run {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
-    Ok(TaskResult {
-        command: spec.label.to_string(),
-        success: status.success() && !timed_out,
-        output,
-        timed_out,
-    })
+    let id = format!("task-{}", tasks.next_id.fetch_add(1, Ordering::Relaxed));
+    let cancel = Arc::new(AtomicBool::new(false));
+    tasks.running.lock()
+        .map_err(|_| "Task state is unavailable.".to_string())?
+        .insert(id.clone(), Arc::clone(&cancel));
+    let _ = app.emit("task-progress", TaskProgressEvent { task_id: id.clone(), state: "running".to_string() });
+
+    let task_id = id.clone();
+    let task_registry = Arc::clone(&tasks.running);
+    thread::spawn(move || {
+        let output_app = app.clone();
+        let output_id = task_id.clone();
+        let on_output: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |data| {
+            let _ = output_app.emit("task-output", TaskOutputEvent { task_id: output_id.clone(), data });
+        });
+        let mut command = Command::new(spec.program);
+        command.args(spec.args).current_dir(&root);
+        let result = match run_bounded_command_controlled(
+            &mut command, 100_000, std::time::Duration::from_secs(15 * 60), cancel, on_output,
+        ) {
+            Ok((status, output, timed_out, cancelled)) => TaskResult {
+                command: spec.label.to_string(),
+                success: status.success() && !timed_out && !cancelled,
+                output, timed_out, cancelled,
+            },
+            Err(error) => TaskResult {
+                command: spec.label.to_string(), success: false,
+                output: format!("Could not run {}. Install the toolchain and ensure it is on PATH: {error}", spec.program),
+                timed_out: false, cancelled: false,
+            },
+        };
+        let state = if result.cancelled { "cancelled" }
+            else if result.timed_out { "timed_out" }
+            else if result.success { "completed" }
+            else { "failed" };
+        let _ = app.emit("task-progress", TaskProgressEvent { task_id: task_id.clone(), state: state.to_string() });
+        let _ = app.emit("task-completed", TaskCompletedEvent { task_id: task_id.clone(), result });
+        if let Ok(mut running) = task_registry.lock() { running.remove(&task_id); }
+    });
+    Ok(id)
+}
+
+#[tauri::command]
+fn cancel_project_task(
+    tasks: State<'_, ProjectTaskState>,
+    task_id: String,
+) -> Result<bool, String> {
+    let running = tasks.running.lock().map_err(|_| "Task state is unavailable.".to_string())?;
+    let Some(cancel) = running.get(&task_id) else { return Ok(false); };
+    cancel.store(true, Ordering::Relaxed);
+    Ok(true)
 }
 
 #[derive(Default)]
@@ -708,6 +766,7 @@ pub fn run() {
         .manage(lsp::LspState::default())
         .manage(dap::DapState::default())
         .manage(ProjectState::default())
+        .manage(ProjectTaskState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .invoke_handler(tauri::generate_handler![
@@ -737,7 +796,8 @@ pub fn run() {
             git_pull_ff_only,
             git_push_current_branch,
             detect_project_tasks,
-            run_project_task,
+            start_project_task,
+            cancel_project_task,
             run_source_file
         ])
         .run(tauri::generate_context!())
