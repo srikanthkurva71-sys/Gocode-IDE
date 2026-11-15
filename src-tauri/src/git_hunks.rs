@@ -88,6 +88,8 @@ mod tests {
         run_git(&root, &["init", "-q"]);
         run_git(&root, &["config", "user.name", "Gocode IDE Tests"]);
         run_git(&root, &["config", "user.email", "gocode-tests@example.invalid"]);
+        // Keep Git from applying platform-specific CRLF conversion during patch assertions.
+        run_git(&root, &["config", "core.autocrlf", "false"]);
         let file = root.join("sample.txt");
         fs::write(&file, "first\noriginal\nlast\n").unwrap();
         run_git(&root, &["add", "sample.txt"]);
