@@ -103,6 +103,7 @@ export default function App() {
   const [lspReferences, setLspReferences] = useState<ReferenceLocation[]>([]);
   const lspRequestSeq = useRef(2);
   const lspRequestKinds = useRef<Record<number, string>>({});
+  const lspRequestTimers = useRef<Record<number, number>>({});
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapOutput, setDapOutput] = useState<string[]>([]);
   const [dapThreadId, setDapThreadId] = useState(1);
@@ -378,12 +379,20 @@ export default function App() {
     if (!lspSessionId || !lspReady || !projectRoot) return;
     const id = lspRequestSeq.current++;
     lspRequestKinds.current[id] = method;
+    lspRequestTimers.current[id] = window.setTimeout(() => {
+      delete lspRequestKinds.current[id];
+      delete lspRequestTimers.current[id];
+      setMessage("Language-server request timed out: " + method);
+    }, 15000);
     if (method === "textDocument/hover") setLspHoverText("");
     if (method === "textDocument/completion") setLspCompletions([]);
     try {
       await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", id, method, params } });
       setLspOutput(current => [...current, "→ " + method + " (#" + id + ")"].slice(-40));
     } catch (error) {
+      window.clearTimeout(lspRequestTimers.current[id]);
+      delete lspRequestTimers.current[id];
+      delete lspRequestKinds.current[id];
       setMessage("Language-server request failed: " + String(error));
     }
   }
@@ -463,7 +472,12 @@ export default function App() {
         }
         if (message.id !== undefined && message.id !== 1 && (message.result !== undefined || message.error !== undefined)) {
           setLspOutput(current => [...current, "← response #" + String(message.id) + ": " + JSON.stringify(message.result ?? message.error).slice(0, 900)].slice(-40));
+          if (typeof message.id === "number" && Number.isFinite(message.id)) {
+            window.clearTimeout(lspRequestTimers.current[message.id]);
+            delete lspRequestTimers.current[message.id];
+          }
           if (message.error) {
+            if (typeof message.id === "number") delete lspRequestKinds.current[message.id];
             setMessage("Language-server request failed: " + String((message.error as { message?: string }).message ?? "Unknown error"));
           } else if (message.method === undefined && (typeof message.id === "number" || typeof message.id === "string")) {
             const requestKind = lspRequestKinds.current[Number(message.id)];
@@ -513,7 +527,13 @@ export default function App() {
         if (active && event.payload.session_id === lspSessionId) setMessage("Language-server error: " + event.payload.message);
       }),
       listen<{ session_id: string }>("lsp-exited", event => {
-        if (active && event.payload.session_id === lspSessionId) { setLspReady(false); setMessage("Language server exited."); }
+        if (active && event.payload.session_id === lspSessionId) {
+          setLspReady(false);
+          for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
+          lspRequestTimers.current = {};
+          lspRequestKinds.current = {};
+          setMessage("Language server exited.");
+        }
       })
     ]).then(([message, error, exited]) => {
       if (!active) { message(); error(); exited(); return; }
