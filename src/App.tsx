@@ -21,6 +21,7 @@ import { reviewCapabilities } from "./lib/capabilityReview";
 import { createFeedbackIssueUrl, type FeedbackCategory } from "./lib/feedback";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 import { TaskEventBuffer, type TaskEvent } from "./lib/taskEventBuffer";
+import { getLspRecoveryDelay, MAX_LSP_RECOVERY_ATTEMPTS } from "./lib/lspRecovery";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -113,6 +114,9 @@ export default function App() {
   const lspRequestTimers = useRef<Record<number, number>>({});
   const lspLaunchConfig = useRef<{ executable: string; args: string[] } | null>(null);
   const lspInitializeHandled = useRef<string | null>(null);
+  const lspRetryAttempt = useRef(0);
+  const lspRetryTimer = useRef<number | null>(null);
+  const lspRecoveryGeneration = useRef(0);
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapLaunchProfiles, setDapLaunchProfiles] = useState<DebugLaunchProfile[]>([]);
   const [selectedDapProfile, setSelectedDapProfile] = useState("");
@@ -179,7 +183,54 @@ export default function App() {
     return "file:///" + absolute.split("/").filter(Boolean).map((part, index) => index === 0 && /^[A-Za-z]:$/.test(part) ? part : encodeURIComponent(part)).join("/");
   }
 
+  function clearLspRecovery(resetAttempts = false) {
+    lspRecoveryGeneration.current += 1;
+    if (lspRetryTimer.current !== null) window.clearTimeout(lspRetryTimer.current);
+    lspRetryTimer.current = null;
+    if (resetAttempts) lspRetryAttempt.current = 0;
+  }
+
+  function scheduleLspRecovery() {
+    const config = lspLaunchConfig.current;
+    if (!config || !projectRoot || !isTauri()) return;
+    const nextAttempt = lspRetryAttempt.current + 1;
+    const delay = getLspRecoveryDelay(nextAttempt);
+    if (delay === null) {
+      setMessage(`Language server stopped after ${MAX_LSP_RECOVERY_ATTEMPTS} automatic recovery attempts. Use Restart Language Server to try again.`);
+      return;
+    }
+    if (lspRetryTimer.current !== null) window.clearTimeout(lspRetryTimer.current);
+    lspRetryAttempt.current = nextAttempt;
+    const generation = lspRecoveryGeneration.current;
+    setMessage(`Language server exited; retry ${nextAttempt}/${MAX_LSP_RECOVERY_ATTEMPTS} in ${delay / 1000}s.`);
+    lspRetryTimer.current = window.setTimeout(async () => {
+      lspRetryTimer.current = null;
+      if (generation !== lspRecoveryGeneration.current) return;
+      try {
+        const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
+        const id = await invoke<string>("lsp_start", {
+          executable: config.executable,
+          args: [...config.args],
+          rootUri,
+        });
+        if (generation !== lspRecoveryGeneration.current) {
+          await invoke("lsp_stop", { sessionId: id }).catch(() => undefined);
+          return;
+        }
+        setLspSessionId(id);
+        setLspReady(false);
+        setMessage(`Language server recovery attempt ${nextAttempt} started; waiting for initialization.`);
+      } catch (error) {
+        if (generation === lspRecoveryGeneration.current) {
+          setMessage("Automatic language-server recovery failed: " + String(error));
+          scheduleLspRecovery();
+        }
+      }
+    }, delay);
+  }
+
   async function startLanguageServer() {
+    clearLspRecovery(true);
     if (!isTauri()) { setMessage("Language servers are available only in the installed desktop app."); return; }
     if (!projectRoot) { setMessage("Open a native project folder before starting a language server."); return; }
     const executable = window.prompt("Enter the full path to a language-server executable you installed and trust:");
@@ -591,6 +642,7 @@ export default function App() {
   }
 
   async function stopLanguageServer() {
+    clearLspRecovery(true);
     if (!lspSessionId) return;
     try { await invoke("lsp_stop", { sessionId: lspSessionId }); }
     catch (error) { setMessage("Language-server stop failed: " + String(error)); }
@@ -608,6 +660,7 @@ export default function App() {
   }
 
   async function restartLanguageServer() {
+    clearLspRecovery(true);
     const config = lspLaunchConfig.current;
     if (!config || !projectRoot || !isTauri()) {
       setMessage("Start a language server once before using restart.");
@@ -691,6 +744,7 @@ export default function App() {
               await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "textDocument/didOpen", params: { textDocument: { uri, languageId: languageForFile(doc.fileName), version: 1, text: doc.text } } } });
               lspOpenedDocuments.current.add(uri);
               setLspReady(true);
+              lspRetryAttempt.current = 0;
               setMessage("Language server initialized for " + doc.fileName + ".");
             }
           } catch (error) {
@@ -773,6 +827,7 @@ export default function App() {
           setLspSessionId(null);
           lspOpenedDocuments.current.clear();
           setMessage("Language server exited.");
+          scheduleLspRecovery();
         }
       })
     ]).then(([message, error, exited]) => {
