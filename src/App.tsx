@@ -24,6 +24,7 @@ import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, format
 import { TaskEventBuffer, type TaskEvent } from "./lib/taskEventBuffer";
 import { getLspRecoveryDelay, MAX_LSP_RECOVERY_ATTEMPTS } from "./lib/lspRecovery";
 import { createWorkspaceRecoverySnapshot, parseWorkspaceRecoverySnapshot, type WorkspaceRecoverySnapshot } from "./lib/workspaceRecovery";
+import { getVirtualWindow } from "./lib/virtualList";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -84,6 +85,7 @@ export default function App() {
   const [projectFileFormats, setProjectFileFormats] = useState<Record<string, ProjectTextFormat>>({});
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
   const [projectEntries, setProjectEntries] = useState<ProjectEntry[]>([]);
+  const [projectTreeScrollTop, setProjectTreeScrollTop] = useState(0);
   const [collapsedProjectDirs, setCollapsedProjectDirs] = useState<Record<string, boolean>>({});
   const [gitInfo, setGitInfo] = useState<GitResult | null>(null);
   const [gitBranches, setGitBranches] = useState<string[]>([]);
@@ -196,6 +198,8 @@ export default function App() {
     return filterQuickOpenNames(names, quickOpenQuery, 100);
   }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
+  const visibleProjectEntries = useMemo(() => projectEntries.filter(isProjectEntryVisible), [projectEntries, collapsedProjectDirs]);
+  const projectTreeWindow = useMemo(() => getVirtualWindow(visibleProjectEntries, projectTreeScrollTop, 480), [visibleProjectEntries, projectTreeScrollTop]);
 
   function projectFileUri(root: string, relative: string): string {
     const absolute = (root.replace(/\\/g, "/").replace(/\/$/, "") + "/" + relative.replace(/\\/g, "/"));
@@ -1215,13 +1219,6 @@ export default function App() {
     download(fileName, text);
     setMessage("Downloaded " + fileName);
   }
-  function isProjectEntryVisible(entry: ProjectEntry): boolean {
-    const parts = entry.path.split("/");
-    for (let index = 1; index < parts.length; index += 1) {
-      if (collapsedProjectDirs[parts.slice(0, index).join("/")]) return false;
-    }
-    return true;
-  }
   function toggleProjectDirectory(path: string) {
     setCollapsedProjectDirs(current => ({ ...current, [path]: !current[path] }));
   }
@@ -1720,7 +1717,7 @@ export default function App() {
       <nav className="activity">{panels.map(item => <button key={item.name} title={item.name} aria-label={item.name} className={panel === item.name ? "active" : ""} onClick={() => setPanel(item.name)}><span>{item.icon}</span></button>)}</nav>
       <aside className="sidebar"><div className="side-heading">{panel.toUpperCase()}<button title="New file" onClick={() => { setNewFile(true); setPanel("Explorer"); }}>＋</button></div>
         {panel === "Explorer" ? <>
-          <div className="tree-heading">⌄　{projectRoot ? projectRoot.split(/[\\\\/]/).pop() : "MY-PROJECT"} <button title="New folder" disabled={!projectRoot || !isTauri()} onClick={() => { setNewFolder(true); setNewFile(false); }}>▱</button><button title="New file" onClick={() => { setNewFile(true); setNewFolder(false); }}>＋</button></div>{projectRoot && <div className="project-root-label" title={projectRoot}>{projectRoot}</div>}{projectRoot && projectEntries.filter(isProjectEntryVisible).map(entry => <div className={"file-row project-row " + (fileName === entry.path ? "selected" : "")} key={entry.path} style={{ paddingLeft: Math.min(7 + (entry.path.split("/").length - 1) * 12, 60) }}><button className="file-open" aria-expanded={entry.is_dir ? !collapsedProjectDirs[entry.path] : undefined} onClick={() => entry.is_dir ? toggleProjectDirectory(entry.path) : void openProjectEntry(entry.path)}><span className="file-icon">{entry.is_dir ? (collapsedProjectDirs[entry.path] ? "▸" : "▾") : "◇"}</span>{entry.path.split("/").pop()}</button></div>)}
+          <div className="tree-heading">⌄　{projectRoot ? projectRoot.split(/[\\\\/]/).pop() : "MY-PROJECT"} <button title="New folder" disabled={!projectRoot || !isTauri()} onClick={() => { setNewFolder(true); setNewFile(false); }}>▱</button><button title="New file" onClick={() => { setNewFile(true); setNewFolder(false); }}>＋</button></div>{projectRoot && <div className="project-root-label" title={projectRoot}>{projectRoot}</div>}{projectRoot && <div className="project-tree-viewport" role="tree" aria-label="Project files" onScroll={event => setProjectTreeScrollTop(event.currentTarget.scrollTop)}><div aria-hidden="true" style={{ height: projectTreeWindow.offsetTop }} />{projectTreeWindow.items.map(entry => <div className={"file-row project-row " + (fileName === entry.path ? "selected" : "")} key={entry.path} style={{ paddingLeft: Math.min(7 + (entry.path.split("/").length - 1) * 12, 60) }}><button className="file-open" role="treeitem" aria-expanded={entry.is_dir ? !collapsedProjectDirs[entry.path] : undefined} onClick={() => entry.is_dir ? toggleProjectDirectory(entry.path) : void openProjectEntry(entry.path)}><span className="file-icon">{entry.is_dir ? (collapsedProjectDirs[entry.path] ? "▸" : "▾") : "◇"}</span>{entry.path.split("/").pop()}</button></div>)}<div aria-hidden="true" style={{ height: Math.max(0, projectTreeWindow.totalHeight - projectTreeWindow.offsetTop - projectTreeWindow.items.length * 27) }} /></div>}
           {Object.keys(files).sort().map(name => <div className={"file-row " + (fileName === name ? "selected" : "")} key={name}>
             <button className="file-open" onClick={() => setFileName(name)}><span className="file-icon">◇</span>{name}</button>
             <button className="file-delete" title={"Remove " + name} onClick={() => removeFile(name)}>×</button>

@@ -57,3 +57,5 @@
   margin-left: 5px;
   margin-top: 5px;
 }
+
+.project-tree-viewport{height:480px;min-height:120px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;contain:strict}.project-tree-viewport>.project-row{height:27px;min-height:27px}
