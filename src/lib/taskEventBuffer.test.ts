@@ -36,6 +36,16 @@ describe("TaskEventBuffer", () => {
     expect(buffer.activate("task-1")).toHaveLength(256);
   });
 
+  it("preserves terminal events when the early-event buffer is full", () => {
+    const buffer = new TaskEventBuffer();
+    buffer.begin();
+    for (let index = 0; index < 256; index += 1) buffer.push(output("task-1", String(index)));
+    buffer.push({ kind: "completed", task_id: "task-1", result: { command: "npm test", success: true, output: "ok" } });
+    const events = buffer.activate("task-1");
+    expect(events).toHaveLength(256);
+    expect(events.at(-1)?.kind).toBe("completed");
+  });
+
   it("ignores events after reset or completion", () => {
     const buffer = new TaskEventBuffer();
     buffer.begin();

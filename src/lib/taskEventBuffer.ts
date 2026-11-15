@@ -27,7 +27,26 @@ export class TaskEventBuffer {
   push(event: TaskEvent): TaskEvent[] {
     if (!this.accepting || !event.task_id) return [];
     if (this.activeId !== null) return event.task_id === this.activeId ? [event] : [];
-    if (this.pendingCount >= MAX_PENDING_EVENTS) return [];
+    if (this.pendingCount >= MAX_PENDING_EVENTS) {
+      if (event.kind === "output") return [];
+      let removed = false;
+      for (const [taskId, queued] of this.pending) {
+        const outputIndex = queued.findIndex(item => item.kind === "output");
+        if (outputIndex >= 0) {
+          queued.splice(outputIndex, 1);
+          this.pendingCount -= 1;
+          if (queued.length === 0) this.pending.delete(taskId);
+          removed = true;
+          break;
+        }
+      }
+      // Preserve terminal/progress events even if a pathological event burst
+      // contains no output chunks left to evict.
+      if (!removed) {
+        this.pending.clear();
+        this.pendingCount = 0;
+      }
+    }
     const events = this.pending.get(event.task_id) ?? [];
     events.push(event);
     this.pending.set(event.task_id, events);
