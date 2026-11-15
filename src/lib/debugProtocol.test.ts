@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  normalizeDebugResponse,
   normalizeDebugScopes,
   normalizeDebugStackFrames,
   normalizeDebugThreads,
@@ -47,5 +48,31 @@ describe("debug protocol response normalization", () => {
     expect(normalizeDebugStackFrames({ body: { stackFrames: "bad" } })).toEqual([]);
     expect(normalizeDebugScopes({})).toEqual([]);
     expect(normalizeDebugVariables({ body: null })).toEqual([]);
+  });
+});
+
+describe("DAP response validation", () => {
+  it("accepts a well-formed response with a positive request sequence", () => {
+    expect(normalizeDebugResponse({
+      type: "response", request_seq: 4, command: "stackTrace", success: true,
+    })).toEqual({
+      requestSeq: 4, command: "stackTrace", success: true, message: null,
+    });
+  });
+
+  it("bounds adapter error messages", () => {
+    const response = normalizeDebugResponse({
+      type: "response", request_seq: 2, command: "launch", success: false, message: "x".repeat(3000),
+    });
+    expect(response?.message).toBe("x".repeat(2000));
+  });
+
+  it("rejects malformed, unsafe, and non-response messages", () => {
+    expect(normalizeDebugResponse(null)).toBeNull();
+    expect(normalizeDebugResponse({ type: "event", request_seq: 1, command: "stopped", success: true })).toBeNull();
+    expect(normalizeDebugResponse({ type: "response", request_seq: -1, command: "launch", success: true })).toBeNull();
+    expect(normalizeDebugResponse({ type: "response", request_seq: Number.MAX_SAFE_INTEGER + 1, command: "launch", success: true })).toBeNull();
+    expect(normalizeDebugResponse({ type: "response", request_seq: 1, command: "", success: true })).toBeNull();
+    expect(normalizeDebugResponse({ type: "response", request_seq: 1, command: "launch", success: "yes" })).toBeNull();
   });
 });
