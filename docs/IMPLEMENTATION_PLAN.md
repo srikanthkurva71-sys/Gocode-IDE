@@ -14,13 +14,13 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [x] Extract fixed project-task resolution, result contracts, and bounded output formatting into a tested native module.
 - [ ] Introduce typed request/result/error structures for workspace, process, task, Git, LSP and DAP operations.
 - [ ] Add stable error categories while preserving actionable messages.
-- [ ] Add integration tests around native workspace operations and process cleanup.
+- [x] Add unit tests for atomic workspace writes and streaming bounded process-output capture.\n- [ ] Add broader integration tests around native workspace operations and process-tree cleanup.
 - Acceptance: frontend and Rust tests pass; no user-visible regression.
 
 ## Stage 2 — Workspace and editor correctness
 - [ ] Consolidate native project buffers and browser-local buffers behind explicit storage adapters.
 - [ ] Add external-file-change detection and conflict-safe save.
-- [ ] Add atomic writes and preserve encoding/line endings.
+- [x] Add atomic writes for native project saves.\n- [ ] Preserve original encoding and line-ending style during editor round-trips.
 - [ ] Add bounded local crash recovery and recovery UI.
 - [ ] Add lazy/virtualized project tree and cancellable search.
 - Acceptance: tests cover dirty buffers, external modification, crash recovery, Unicode paths, traversal and symlink escape.
@@ -37,7 +37,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Consolidate toolchain discovery and task adapter contracts.
 - [ ] Add task profiles for common project types (Node, Python, Go, Rust, C/C++, Java, .NET) based on installed toolchains.
 - [ ] Add task configuration with explicit trust/confirmation and argument-array execution.
-- [ ] Add cancellation, timeouts, output ring buffers and child-process tree cleanup.
+- [x] Add bounded streaming stdout/stderr capture for project tasks.\n- [ ] Add cancellation, timeouts and Windows child-process tree cleanup.
 - [ ] Add test runner integration and test result navigation.
 - Acceptance: mock process tests plus real Windows smoke tests for available toolchains.
 
