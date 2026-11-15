@@ -26,13 +26,12 @@ describe("Content-Length protocol framing", () => {
   });
 
   it("rejects missing or duplicate Content-Length headers", () => {
-    expect(() => parseProtocolFrames(new TextEncoder().encode("X-Test: 1\r\n\r\n{}"))).toThrow(/exactly one Content-Length/);
-    expect(() => parseProtocolFrames(new TextEncoder().encode("Content-Length: 2\r\ncontent-length: 2\r\n\r\n{}"))).toThrow(/exactly one Content-Length/);
+    expect(() => parseProtocolFrames(new TextEncoder().encode("X-Test: 1\\r\\n\\r\\n{}"))).toThrow(/exactly one Content-Length/);
+    expect(() => parseProtocolFrames(new TextEncoder().encode("Content-Length: 2\\r\\ncontent-length: 2\\r\\n\\r\\n{}"))).toThrow(/exactly one Content-Length/);
   });
 
   it("rejects non-JSON-RPC objects", () => {
-    const body = new TextEncoder().encode("{}");
-    const frame = new TextEncoder().encode(`Content-Length: ${body.length}\r\n\r\n{}`);
+    const frame = new TextEncoder().encode("Content-Length: 2\\r\\n\\r\\n{}");
     expect(() => parseProtocolFrames(frame)).toThrow(/JSON-RPC 2.0/);
   });
 });
@@ -51,15 +50,30 @@ describe("normalizeLspDiagnostics", () => {
 });
 
 describe("project-local LSP URI filtering", () => {
-  it("accepts files below the project root", () => {
-    expect(isProjectFileUri("file:///C:/work/project/src/main.rs", "file:///C:/work/project")).toBe(true);
-    expect(isProjectFileUri("file:///C:/work/project/folder%20name/file.ts", "file:///C:/work/project/")).toBe(true);
+  const root = "file:///C:/work/project";
+
+  it("accepts files below the project root, including encoded spaces", () => {
+    expect(isProjectFileUri("file:///C:/work/project/src/main.rs", root)).toBe(true);
+    expect(isProjectFileUri("file:///C:/work/project/folder%20name/file.ts", root + "/")).toBe(true);
   });
 
   it("rejects sibling paths, outside paths, non-strings, and oversized URIs", () => {
-    expect(isProjectFileUri("file:///C:/work/project-old/file.ts", "file:///C:/work/project")).toBe(false);
-    expect(isProjectFileUri("file:///C:/work/other/file.ts", "file:///C:/work/project")).toBe(false);
-    expect(isProjectFileUri(null, "file:///C:/work/project")).toBe(false);
-    expect(isProjectFileUri("x".repeat(8193), "file:///C:/work/project")).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/project-old/file.ts", root)).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/other/file.ts", root)).toBe(false);
+    expect(isProjectFileUri(null, root)).toBe(false);
+    expect(isProjectFileUri("x".repeat(8193), root)).toBe(false);
+    expect(isProjectFileUri("https://example.test/project/src.ts", root)).toBe(false);
+  });
+
+  it("rejects encoded traversal and encoded path separators", () => {
+    expect(isProjectFileUri("file:///C:/work/project/%2e%2e/secrets.ts", root)).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/project/%2e%2e%2fsecrets.ts", root)).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/project/%5c..%5csecrets.ts", root)).toBe(false);
+  });
+
+  it("rejects different file hosts and URI query or fragment components", () => {
+    expect(isProjectFileUri("file://server/C:/work/project/src.ts", root)).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/project/src.ts?download=1", root)).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/project/src.ts#fragment", root)).toBe(false);
   });
 });

@@ -125,9 +125,34 @@ export function normalizeLspDiagnostics(value: unknown): EditorMarker[] {
   return markers;
 }
 
-/** Accept diagnostics only for file URIs beneath the currently opened project root. */
+function normalizedFileUriParts(value: string): { host: string; segments: string[] } | null {
+  if (value.length > 8192) return null;
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "file:" || url.username || url.password || url.search || url.hash) return null;
+    const decodedPath = decodeURIComponent(url.pathname);
+    if (decodedPath.includes("\\") || decodedPath.includes("\0")) return null;
+    const segments: string[] = [];
+    for (const segment of decodedPath.split("/")) {
+      if (!segment || segment === ".") continue;
+      if (segment === "..") {
+        if (!segments.length) return null;
+        segments.pop();
+        continue;
+      }
+      segments.push(segment);
+    }
+    return { host: url.hostname.toLowerCase(), segments };
+  } catch {
+    return null;
+  }
+}
+
+/** Accept only normalized file URIs strictly beneath the currently opened project root. */
 export function isProjectFileUri(uri: unknown, projectRootUri: string): uri is string {
-  if (typeof uri !== "string" || uri.length > 8192) return false;
-  const root = projectRootUri.endsWith("/") ? projectRootUri.slice(0, -1) : projectRootUri;
-  return root.length > 0 && uri.startsWith(root + "/");
+  if (typeof uri !== "string" || typeof projectRootUri !== "string") return false;
+  const target = normalizedFileUriParts(uri);
+  const root = normalizedFileUriParts(projectRootUri);
+  if (!target || !root || target.host !== root.host || target.segments.length <= root.segments.length) return false;
+  return root.segments.every((segment, index) => target.segments[index] === segment);
 }
