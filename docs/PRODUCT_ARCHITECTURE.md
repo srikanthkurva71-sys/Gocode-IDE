@@ -321,3 +321,7 @@ A public release requires:
 - The editor supplies the last-read file contents as a baseline. If the file changed or disappeared externally, the native save rejects the stale write rather than silently overwriting the external version.
 - Project task and Run File stdout/stderr are drained concurrently into a fixed-size capture buffer. This bounds captured output memory while tasks execute. Tasks have wall-clock timeouts; Windows timeout handling uses `taskkill /T /F`, while Unix tasks are started in their own process groups and the group is terminated on timeout.
 - Remaining work: process cancellation/timeouts and Windows process-tree cleanup; Run File and Git output capture still need to use the same bounded runner.
+
+
+### Run File and debugger surface
+Run File supports Python, JavaScript, Go, Rust, C and C++ source files when the matching local toolchains are installed. Compile and run stages use the bounded process runner with separate timeouts. The experimental DAP panel exposes continue, step over, step into, step out, pause, threads, call stack, scopes and variables where supported by the configured adapter. Adapter interoperability and full debugger state handling remain release blockers.
