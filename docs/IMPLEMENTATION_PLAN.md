@@ -43,7 +43,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Add task configuration with explicit trust/confirmation and argument-array execution.
 - [x] Add bounded streaming stdout/stderr capture for project tasks.
 - [x] Add wall-clock timeouts, bounded streaming output and process-tree termination on Windows; Unix tasks run in isolated process groups and terminate the group on timeout.
-- [x] Add user-triggered cancellation for detected project tasks, live stdout/stderr events, and task lifecycle progress events; Run File cancellation remains a follow-up.
+- [x] Add user-triggered cancellation for detected project tasks and Run Current File, live stdout/stderr events, and task lifecycle progress events.
 - [x] Add Windows Job Object ownership with kill-on-close and explicit job termination after parent exit, timeout, or user cancellation; add Windows descendant-process and cancellation regression tests.
 - [ ] Add test runner integration and test result navigation.
 - Acceptance: mock process tests plus real Windows smoke tests for available toolchains.
@@ -85,9 +85,9 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Current implementation classification
 
-**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, bounded Run File, asynchronous project tasks with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls and core DAP event lifecycle handling, manifest review, CI MSI packaging.
+**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls and core DAP event lifecycle handling, manifest review, CI MSI packaging.
 
-**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation currently covers detected project tasks but not Run File or interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
+**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
 
 **Not implemented:** production extension execution host, marketplace, true OS sandboxing, complete test explorer, split editor groups, full workspace indexing, production updater, code signing, store certification.
 

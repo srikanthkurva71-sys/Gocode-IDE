@@ -6,7 +6,7 @@ Project tasks are explicit, locally executed build/test commands selected from a
 
 ## Lifecycle
 
-1. The frontend invokes `start_project_task` with a task label.
+1. The frontend invokes `start_project_task` with a fixed task label or `start_source_file_task` with a validated project-relative source path.
 2. The backend resolves the label through `resolve_project_task`; unknown labels are rejected.
 3. The backend allocates a process-local task ID and cancellation token, registers the task, emits `task-progress: running`, and starts a worker thread.
 4. Stdout and stderr are drained concurrently. Each received chunk is emitted as `task-output`; the combined retained output remains capped at 100,000 bytes.
@@ -20,7 +20,7 @@ Project tasks are explicit, locally executed build/test commands selected from a
 - `task-progress`: `{ task_id, state }` — one of `running`, `completed`, `failed`, `timed_out`, or `cancelled`. This is lifecycle progress, not a fabricated percentage.
 - `task-completed`: `{ task_id, result }` — final `TaskResult`, including `success`, `timed_out`, and `cancelled`.
 
-The UI permits one project task at a time, appends live output, and offers a Cancel Running Task action. Cancellation is cooperative at the task-manager boundary and forceful at the process boundary: the token is polled by the runner, then the complete assigned process group/job is terminated.
+The UI permits one task at a time (project task or Run Current File), appends live output, and offers a Cancel Running Task action. Event delivery is correlated by task ID; early events are buffered until the start invocation returns its ID, and stale events from other task IDs are discarded. Cancellation is cooperative at the task-manager boundary and forceful at the process boundary: the token is polled by the runner, then the complete assigned process group/job is terminated.
 
 ## Security and resource bounds
 
@@ -34,8 +34,8 @@ The UI permits one project task at a time, appends live output, and offers a Can
 
 ## Current limitations
 
-- Run Current File still uses the bounded synchronous runner and does not yet expose a Cancel button.
-- Interactive terminal sessions are separate PTY sessions and are not controlled by the project-task cancellation token.
+- Interactive terminal sessions are separate PTY sessions and are not controlled by the task cancellation token.
+- Interactive terminal sessions are separate PTY sessions and are not controlled by the task cancellation token.
 - Progress is lifecycle and output streaming only. Arbitrary build tools do not expose a reliable shared percentage contract.
 - Cancellation can race with natural process completion; if the process has already exited, the completed result wins.
 - This is process lifecycle management, not an OS sandbox. A task executes with the current user's operating-system permissions.
