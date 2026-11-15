@@ -112,6 +112,7 @@ export default function App() {
   const lspLatestRequests = useRef<Record<string, number>>({});
   const lspRequestTimers = useRef<Record<number, number>>({});
   const lspLaunchConfig = useRef<{ executable: string; args: string[] } | null>(null);
+  const lspInitializeHandled = useRef<string | null>(null);
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapLaunchProfiles, setDapLaunchProfiles] = useState<DebugLaunchProfile[]>([]);
   const [selectedDapProfile, setSelectedDapProfile] = useState("");
@@ -680,7 +681,8 @@ export default function App() {
           setLspReady(false);
           setMessage("Language server initialization failed: " + String((message.error as { message?: string }).message ?? "Unknown initialize error"));
         }
-        if (message.id === 1 && message.result && !lspReady) {
+        if (message.id === 1 && message.result && lspInitializeHandled.current !== lspSessionId) {
+          lspInitializeHandled.current = lspSessionId;
           try {
             await invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "initialized", params: {} } });
             const doc = lspDocumentRef.current;
@@ -691,7 +693,11 @@ export default function App() {
               setLspReady(true);
               setMessage("Language server initialized for " + doc.fileName + ".");
             }
-          } catch (error) { setMessage("Language-server initialization failed: " + String(error)); }
+          } catch (error) {
+            lspInitializeHandled.current = null;
+            setLspReady(false);
+            setMessage("Language-server initialization failed: " + String(error));
+          }
         }
         if (message.id !== undefined && message.id !== 1 && (message.result !== undefined || message.error !== undefined)) {
           setLspOutput(current => [...current, "← response #" + String(message.id) + ": " + JSON.stringify(message.result ?? message.error).slice(0, 900)].slice(-40));
