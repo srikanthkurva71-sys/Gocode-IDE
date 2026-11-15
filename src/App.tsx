@@ -996,8 +996,7 @@ export default function App() {
 
   // Persist only unsaved native project buffers locally. Never upload recovery data.
   useEffect(() => {
-    if (!projectRoot || !isTauri() || !recoveryCheckComplete) return;
-    if (recoverySnapshot && recoverySnapshot.projectRoot !== projectRoot) return;
+    if (!projectRoot || !isTauri() || !recoveryCheckComplete || recoverySnapshot) return;
     const dirtyFiles: Record<string, { content: string; baseline: string }> = {};
     for (const name of openTabs) {
       if (!projectEntries.some(entry => entry.path === name && !entry.is_dir)) continue;
