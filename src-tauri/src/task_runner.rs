@@ -1,7 +1,8 @@
 use serde::Serialize;
 use std::{
     io::{self, Read},
-    process::{Command, ExitStatus, Stdio},
+    process::{Child, Command, ExitStatus, Stdio},
+    time::{Duration, Instant},
     sync::{Arc, Mutex},
     thread,
 };
@@ -12,6 +13,7 @@ pub struct TaskResult {
     pub command: String,
     pub success: bool,
     pub output: String,
+    pub timed_out: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -66,9 +68,29 @@ fn capture_reader(
     })
 }
 
-/// Stream stdout and stderr concurrently into a bounded buffer. This caps memory
-/// while the process runs; Command::output() would buffer all output before truncation.
-pub fn run_bounded_command(command: &mut Command, max_bytes: usize) -> io::Result<(ExitStatus, String)> {
+#[cfg(windows)]
+fn terminate_process_tree(child: &mut Child) {
+    // taskkill /T terminates descendants as well as the directly spawned process.
+    let _ = Command::new("taskkill")
+        .args(["/PID", &child.id().to_string(), "/T", "/F"])
+        .status();
+    let _ = child.kill();
+}
+
+#[cfg(not(windows))]
+fn terminate_process_tree(child: &mut Child) {
+    // Unix process-group isolation is a separate platform integration; at minimum
+    // always terminate and reap the directly spawned process on timeout.
+    let _ = child.kill();
+}
+
+/// Stream stdout/stderr into a bounded buffer and enforce a wall-clock timeout.
+/// On Windows, timeout termination also targets the process' descendant tree.
+pub fn run_bounded_command(
+    command: &mut Command,
+    max_bytes: usize,
+    timeout: Duration,
+) -> io::Result<(ExitStatus, String, bool)> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stdout pipe unavailable"))?;
@@ -77,14 +99,26 @@ pub fn run_bounded_command(command: &mut Command, max_bytes: usize) -> io::Resul
     let stdout_reader = capture_reader(stdout, Arc::clone(&capture), max_bytes);
     let stderr_reader = capture_reader(stderr, Arc::clone(&capture), max_bytes);
 
-    let status = child.wait()?;
+    let started = Instant::now();
+    let (status, timed_out) = loop {
+        if let Some(status) = child.try_wait()? {
+            break (status, false);
+        }
+        if started.elapsed() >= timeout {
+            terminate_process_tree(&mut child);
+            break (child.wait()?, true);
+        }
+        thread::sleep(Duration::from_millis(20));
+    };
+
     stdout_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stdout reader panicked"))??;
     stderr_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stderr reader panicked"))??;
 
     let output = capture.lock().map_err(|_| io::Error::new(io::ErrorKind::Other, "output capture unavailable"))?;
     let mut text = String::from_utf8_lossy(&output.bytes).into_owned();
     if output.truncated { text.push_str("\n[Output truncated]"); }
-    Ok((status, text))
+    if timed_out { text.push_str("\n[Process timed out and was terminated]"); }
+    Ok((status, text, timed_out))
 }
 
 #[cfg(test)]
@@ -118,7 +152,8 @@ mod tests {
     fn streams_and_bounds_process_output_on_windows() {
         let mut command = Command::new("cmd.exe");
         command.args(["/C", "echo 123456789012345"]);
-        let (status, output) = run_bounded_command(&mut command, 5).unwrap();
+        let (status, output, timed_out) = run_bounded_command(&mut command, 5, Duration::from_secs(2)).unwrap();
+        assert!(!timed_out);
         assert!(status.success());
         assert!(output.starts_with("12345"));
         assert!(output.ends_with("[Output truncated]"));
@@ -134,4 +169,28 @@ mod tests {
         assert!(output.starts_with("12345"));
         assert!(output.ends_with("[Output truncated]"));
     }
+    #[cfg(unix)]
+    #[test]
+    fn terminates_a_command_after_timeout() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 5"]);
+        let (status, output, timed_out) =
+            run_bounded_command(&mut command, 1024, Duration::from_millis(100)).unwrap();
+        assert!(timed_out);
+        assert!(!status.success());
+        assert!(output.contains("timed out"));
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn terminates_a_command_after_timeout() {
+        let mut command = Command::new("powershell.exe");
+        command.args(["-NoProfile", "-Command", "Start-Sleep -Seconds 5"]);
+        let (status, output, timed_out) =
+            run_bounded_command(&mut command, 1024, Duration::from_millis(100)).unwrap();
+        assert!(timed_out);
+        assert!(!status.success());
+        assert!(output.contains("timed out"));
+    }
+
 }
