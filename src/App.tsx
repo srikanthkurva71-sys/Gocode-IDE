@@ -230,6 +230,11 @@ export default function App() {
       dapLaunchConfig.current = launch;
       dapSeq.current = 2;
       setDapOutput([]);
+      setDapThreads([]);
+      setDapFrames([]);
+      setDapScopes([]);
+      setDapVariables([]);
+      setDapBreakpoints({});
       const id = await invoke<string>("dap_start", { executable: executable.trim(), args });
       setDapSessionId(id);
       setMessage("Debug adapter started; initializing DAP.");
@@ -241,6 +246,11 @@ export default function App() {
     try { await invoke("dap_stop", { sessionId: dapSessionId }); }
     catch (error) { setMessage("Debug-adapter stop failed: " + String(error)); }
     setDapSessionId(null);
+    setDapThreads([]);
+    setDapFrames([]);
+    setDapScopes([]);
+    setDapVariables([]);
+    setDapBreakpoints({});
     setMessage("Debug adapter stopped.");
   }
 
@@ -318,7 +328,14 @@ export default function App() {
         if (active && event.payload.session_id === dapSessionId) setMessage("Debug-adapter error: " + event.payload.message);
       }),
       listen<{ session_id: string }>("dap-exited", event => {
-        if (active && event.payload.session_id === dapSessionId) { setDapSessionId(null); setMessage("Debug adapter exited."); }
+        if (active && event.payload.session_id === dapSessionId) {
+          setDapSessionId(null);
+          setDapThreads([]);
+          setDapFrames([]);
+          setDapScopes([]);
+          setDapVariables([]);
+          setMessage("Debug adapter exited.");
+        }
       })
     ]).then(([message, error, exited]) => {
       if (!active) { message(); error(); exited(); return; }
