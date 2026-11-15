@@ -81,6 +81,13 @@ fn terminate_process_tree(child: &mut Child) {
 fn terminate_process_tree(child: &mut Child) {
     // Unix process-group isolation is a separate platform integration; at minimum
     // always terminate and reap the directly spawned process on timeout.
+    #[cfg(unix)]
+    {
+        // Each task is spawned in its own process group, so grandchildren that
+        // inherited stdout/stderr cannot keep the reader threads alive.
+        let process_group = format!("-{}", child.id());
+        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
+    }
     let _ = child.kill();
 }
 
@@ -92,6 +99,11 @@ pub fn run_bounded_command(
     timeout: Duration,
 ) -> io::Result<(ExitStatus, String, bool)> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    #[cfg(unix)]
+    {
+        use std::os::unix::process::CommandExt;
+        command.process_group(0);
+    }
     let mut child = command.spawn()?;
     let stdout = child.stdout.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stdout pipe unavailable"))?;
     let stderr = child.stderr.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stderr pipe unavailable"))?;
@@ -164,7 +176,8 @@ mod tests {
     fn streams_and_bounds_process_output_on_unix() {
         let mut command = Command::new("sh");
         command.args(["-c", "printf 123456789012345"]);
-        let (status, output) = run_bounded_command(&mut command, 5).unwrap();
+        let (status, output, timed_out) = run_bounded_command(&mut command, 5, Duration::from_secs(2)).unwrap();
+        assert!(!timed_out);
         assert!(status.success());
         assert!(output.starts_with("12345"));
         assert!(output.ends_with("[Output truncated]"));
