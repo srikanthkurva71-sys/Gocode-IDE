@@ -58,7 +58,8 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [x] Handle core DAP stopped/continued/thread/output/breakpoint/terminated/exited events, request failures, and clear stale inspection state when sessions end.
 - [x] Add bounded DAP request timeouts and clear pending requests on response, send failure, stop and adapter exit.
 - [x] Add DAP watch-expression evaluation UI using adapter-supported `evaluate` requests.
-- [ ] Complete DAP state machine, request cancellation, and reusable launch configurations.
+- [x] Send a best-effort DAP `cancel` request when an outstanding adapter request reaches its UI timeout.
+- [ ] Complete the DAP state machine and reusable launch configurations.
 - [ ] Add mock adapter integration tests and test at least one real debugger adapter on Windows.
 - Acceptance: documented tested server/adapter combinations; no claims beyond those combinations.
 
@@ -88,9 +89,9 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Current implementation classification
 
-**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, toolchain-aware task discovery for Node, Python, Go, Rust, CMake, Make, Maven, Gradle and .NET, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, and core DAP event lifecycle handling, manifest review, CI MSI packaging.
+**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, toolchain-aware task discovery for Node, Python, Go, Rust, CMake, Make, Maven, Gradle and .NET, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, core DAP event lifecycle handling, best-effort DAP cancellation after request timeouts, manifest review, CI MSI packaging.
 
-**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
+**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, DAP cancellation depends on adapter support and is best-effort, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
 
 **Not implemented:** production extension execution host, marketplace, true OS sandboxing, complete test explorer, split editor groups, full workspace indexing, production updater, code signing, store certification.
 
