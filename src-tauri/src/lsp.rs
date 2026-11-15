@@ -167,7 +167,12 @@ pub fn lsp_start(
                         break;
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    // A closed protocol stream with a still-running child is a leaked
+                    // server, not a usable session. Terminate it so the monitor can reap it.
+                    if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
+                    break;
+                },
                 Err(error) => {
                     let _ = event_app.emit("lsp-error", json!({"session_id": event_id, "message": error}));
                     if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
