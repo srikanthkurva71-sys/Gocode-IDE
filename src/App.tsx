@@ -68,7 +68,7 @@ function loadWorkspace(): Workspace {
 export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [files, setFiles] = useState<Workspace>(loadWorkspace);
-  const [recoverySnapshot] = useState<WorkspaceRecoverySnapshot | null>(() => {
+  const [recoverySnapshot, setRecoverySnapshot] = useState<WorkspaceRecoverySnapshot | null>(() => {
     try { return parseWorkspaceRecoverySnapshot(localStorage.getItem(RECOVERY_STORAGE_KEY)); }
     catch { return null; }
   });
@@ -1010,7 +1010,8 @@ export default function App() {
     const snapshot = createWorkspaceRecoverySnapshot(projectRoot, dirtyFiles);
     try {
       if (snapshot) localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(snapshot));
-      else localStorage.removeItem(RECOVERY_STORAGE_KEY);
+      else if (Object.keys(dirtyFiles).length === 0) localStorage.removeItem(RECOVERY_STORAGE_KEY);
+      else setMessage("Unsaved buffers exceed the recovery limit. Save project files manually; the previous snapshot was preserved.");
     } catch {
       setMessage("Could not save the local recovery snapshot. Save your project files manually.");
     }
@@ -1058,6 +1059,7 @@ export default function App() {
         setMessage("A recovery snapshot was found, but none of its files are currently available.");
       }
       try { localStorage.removeItem(RECOVERY_STORAGE_KEY); } catch { /* Recovery remains best-effort. */ }
+      setRecoverySnapshot(null);
       setRecoveryCheckComplete(true);
     })();
   }, [projectEntries, projectRoot, recoverySnapshot]);
