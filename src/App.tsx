@@ -426,6 +426,12 @@ export default function App() {
     lspRequestTimers.current[id] = window.setTimeout(() => {
       delete lspRequestKinds.current[id];
       delete lspRequestTimers.current[id];
+      // JSON-RPC cancellation is advisory, but it lets capable language servers
+      // stop expensive work after the editor has abandoned a timed-out request.
+      void invoke("lsp_send", {
+        sessionId: lspSessionId,
+        message: { jsonrpc: "2.0", method: "$/cancelRequest", params: { id } }
+      }).catch(() => undefined);
       setMessage("Language-server request timed out: " + method);
     }, 15000);
     if (method === "textDocument/hover") setLspHoverText("");
