@@ -16,6 +16,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Add stable error categories while preserving actionable messages.
 - [x] Add unit tests for atomic workspace writes and streaming bounded process-output capture.
 - [ ] Add broader integration tests around native workspace operations and process-tree cleanup.
+- Native LSP/DAP readers now terminate their child process when the protocol output stream closes unexpectedly, allowing the monitor to reap the session instead of leaving a background process running.
 - Acceptance: frontend and Rust tests pass; no user-visible regression.
 
 ## Stage 2 — Workspace and editor correctness
