@@ -400,74 +400,99 @@ fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, S
     Ok(tasks)
 }
 
+fn compile_and_run_source(
+    compiler: &str,
+    source: &Path,
+    project_root: &Path,
+    command_label: String,
+) -> Result<TaskResult, String> {
+    let temp_root = std::env::temp_dir().join(format!(
+        "gocode-run-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+    ));
+    fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
+    let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
+
+    let mut compile = Command::new(compiler);
+    compile.arg(source).arg("-o").arg(&executable).current_dir(project_root);
+    let compile_result = run_bounded_command(&mut compile, 100_000, std::time::Duration::from_secs(300));
+    let (compile_status, compile_output, compile_timed_out) = match compile_result {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&temp_root);
+            return Err(format!("Could not start {compiler}. Install the compiler and ensure it is on PATH: {error}"));
+        }
+    };
+    if compile_timed_out || !compile_status.success() {
+        let _ = fs::remove_dir_all(&temp_root);
+        return Ok(TaskResult {
+            command: format!("{compiler} {command_label}"),
+            success: false,
+            output: compile_output,
+            timed_out: compile_timed_out,
+        });
+    }
+
+    let mut execution = Command::new(&executable);
+    execution.current_dir(project_root);
+    let execution_result = run_bounded_command(&mut execution, 100_000, std::time::Duration::from_secs(30));
+    let _ = fs::remove_dir_all(&temp_root);
+    let (status, output, timed_out) = execution_result
+        .map_err(|e| format!("Could not launch compiled program: {e}"))?;
+    Ok(TaskResult {
+        command: format!("{compiler} {command_label}"),
+        success: status.success() && !timed_out,
+        output,
+        timed_out,
+    })
+}
+
 #[tauri::command]
 fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskResult, String> {
     let root = project_root(&state)?;
     let relative = safe_relative_path(&root, &path)?;
     let metadata = fs::symlink_metadata(&relative).map_err(|e| format!("Could not inspect source file: {e}"))?;
-    if metadata.file_type().is_symlink() || !metadata.is_file() { return Err("Only regular, non-symlink source files can be run.".into()); }
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Only regular, non-symlink source files can be run.".into());
+    }
     let canonical_root = root.canonicalize().map_err(|e| format!("Could not resolve project folder: {e}"))?;
     let canonical_file = relative.canonicalize().map_err(|e| format!("Could not resolve source file: {e}"))?;
-    if !canonical_file.starts_with(&canonical_root) { return Err("Source file must stay inside the opened project.".into()); }
+    if !canonical_file.starts_with(&canonical_root) {
+        return Err("Source file must stay inside the opened project.".into());
+    }
     let extension = canonical_file.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
     let source = canonical_file.to_string_lossy().into_owned();
-    let (program, args): (&str, Vec<String>) = match extension.as_str() {
-        "py" => ("python", vec![source.clone()]),
-        "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
-        "go" => ("go", vec!["run".into(), source.clone()]),
-        "rs" => {
-            let temp_root = std::env::temp_dir().join(format!("gocode-run-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
-            fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
-            let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
-            let compile = Command::new("rustc").arg(&canonical_file).arg("-o").arg(&executable).current_dir(&canonical_root).output()
-                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not start rustc. Install Rust and ensure it is on PATH: {e}") })?;
-            let mut compile_text = String::from_utf8_lossy(&compile.stdout).to_string();
-            compile_text.push_str(&String::from_utf8_lossy(&compile.stderr));
-            if !compile.status.success() {
-                let _ = fs::remove_dir_all(&temp_root);
-                if compile_text.len() > 100_000 { compile_text.truncate(100_000); compile_text.push_str("\n[Output truncated]"); }
-                return Ok(TaskResult { command: format!("rustc {} -o <temporary executable>", source), success: false, output: compile_text });
-            }
-            let execution = Command::new(&executable).current_dir(&canonical_root).output()
-                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not launch compiled Rust program: {e}") });
-            let _ = fs::remove_dir_all(&temp_root);
-            let execution = execution?;
-            let mut text = String::from_utf8_lossy(&execution.stdout).to_string();
-            text.push_str(&String::from_utf8_lossy(&execution.stderr));
-            if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
-            return Ok(TaskResult { command: format!("rustc {} → temporary executable", source), success: execution.status.success(), output: text });
-        }
+
+    match extension.as_str() {
+        "rs" => compile_and_run_source("rustc", &canonical_file, &canonical_root, source),
         "c" | "cpp" | "cc" | "cxx" => {
             let compiler = if extension == "c" { "cc" } else { "c++" };
-            let temp_root = std::env::temp_dir().join(format!("gocode-run-{}-{}", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()));
-            fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
-            let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
-            let compile = Command::new(compiler).arg(&canonical_file).arg("-o").arg(&executable).current_dir(&canonical_root).output()
-                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not start {compiler}. Install a C/C++ compiler and ensure it is on PATH: {e}") })?;
-            let mut compile_text = String::from_utf8_lossy(&compile.stdout).to_string();
-            compile_text.push_str(&String::from_utf8_lossy(&compile.stderr));
-            if !compile.status.success() {
-                let _ = fs::remove_dir_all(&temp_root);
-                if compile_text.len() > 100_000 { compile_text.truncate(100_000); compile_text.push_str("\n[Output truncated]"); }
-                return Ok(TaskResult { command: format!("{compiler} {} -o <temporary executable>", source), success: false, output: compile_text });
-            }
-            let execution = Command::new(&executable).current_dir(&canonical_root).output()
-                .map_err(|e| { let _ = fs::remove_dir_all(&temp_root); format!("Could not launch compiled program: {e}") });
-            let _ = fs::remove_dir_all(&temp_root);
-            let execution = execution?;
-            let mut text = String::from_utf8_lossy(&execution.stdout).to_string();
-            text.push_str(&String::from_utf8_lossy(&execution.stderr));
-            if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
-            return Ok(TaskResult { command: format!("{compiler} {} → temporary executable", source), success: execution.status.success(), output: text });
+            compile_and_run_source(compiler, &canonical_file, &canonical_root, source)
         }
-        _ => return Err("Run File supports Python, JavaScript, Go, Rust, C, and C++ files when their toolchains are installed.".into()),
-    };
-    let output = Command::new(program).args(&args).current_dir(&canonical_root).output()
-        .map_err(|e| format!("Could not start {program}. Install the runtime and ensure it is on PATH: {e}"))?;
-    let mut text = String::from_utf8_lossy(&output.stdout).to_string();
-    text.push_str(&String::from_utf8_lossy(&output.stderr));
-    if text.len() > 100_000 { text.truncate(100_000); text.push_str("\n[Output truncated]"); }
-    Ok(TaskResult { command: format!("{program} {}", args.join(" ")), success: output.status.success(), output: text })
+        "py" | "js" | "mjs" | "cjs" | "go" => {
+            let (program, args): (&str, Vec<String>) = match extension.as_str() {
+                "py" => ("python", vec![source.clone()]),
+                "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
+                "go" => ("go", vec!["run".into(), source.clone()]),
+                _ => unreachable!(),
+            };
+            let mut command = Command::new(program);
+            command.args(&args).current_dir(&canonical_root);
+            let (status, output, timed_out) = run_bounded_command(
+                &mut command,
+                100_000,
+                std::time::Duration::from_secs(120),
+            ).map_err(|e| format!("Could not start {program}. Install the runtime and ensure it is on PATH: {e}"))?;
+            Ok(TaskResult {
+                command: format!("{program} {}", args.join(" ")),
+                success: status.success() && !timed_out,
+                output,
+                timed_out,
+            })
+        }
+        _ => Err("Run File supports Python, JavaScript, Go, Rust, C, and C++ files when their toolchains are installed.".into()),
+    }
 }
 
 #[tauri::command]
@@ -477,12 +502,16 @@ fn run_project_task(state: State<'_, ProjectState>, task: String) -> Result<Task
         .ok_or_else(|| "This project task is not supported.".to_string())?;
     let mut command = Command::new(spec.program);
     command.args(spec.args).current_dir(&root);
-    let (status, output) = run_bounded_command(&mut command, 100_000)
-        .map_err(|e| format!("Could not run {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
+    let (status, output, timed_out) = run_bounded_command(
+        &mut command,
+        100_000,
+        std::time::Duration::from_secs(15 * 60),
+    ).map_err(|e| format!("Could not run {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
     Ok(TaskResult {
         command: spec.label.to_string(),
-        success: status.success(),
+        success: status.success() && !timed_out,
         output,
+        timed_out,
     })
 }
 
