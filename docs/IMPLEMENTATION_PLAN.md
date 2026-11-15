@@ -15,7 +15,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [ ] Introduce typed request/result/error structures for workspace, process, task, Git, LSP and DAP operations.
 - [ ] Add stable error categories while preserving actionable messages.
 - [x] Add unit tests for atomic workspace writes and streaming bounded process-output capture.
-- [ ] Add broader integration tests around native workspace operations and process-tree cleanup.
+- [x] Add a Unix regression test proving completed tasks do not hang when descendants retain inherited output pipes; Windows process-tree lifecycle still needs Job Object coverage.
 - Native LSP/DAP readers now terminate their child process when the protocol output stream closes unexpectedly, allowing the monitor to reap the session instead of leaving a background process running.
 - Acceptance: frontend and Rust tests pass; no user-visible regression.
 
@@ -44,6 +44,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [x] Add bounded streaming stdout/stderr capture for project tasks.
 - [x] Add wall-clock timeouts, bounded streaming output and process-tree termination on Windows; Unix tasks run in isolated process groups and terminate the group on timeout.
 - [ ] Add user-triggered cancellation and task progress events.
+- [ ] Add Windows Job Object ownership so task descendants are terminated and reaped reliably after parent exit as well as timeout.
 - [ ] Add test runner integration and test result navigation.
 - Acceptance: mock process tests plus real Windows smoke tests for available toolchains.
 
@@ -86,7 +87,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 **Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, bounded Run File and project task execution with timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls and core DAP event lifecycle handling, manifest review, CI MSI packaging.
 
-**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, process-tree cleanup edge cases, native project buffer recovery/conflict handling, full task system, real Windows-device validation.
+**Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, Windows descendant-process lifecycle/Job Object integration, native project buffer recovery/conflict handling, full task system, real Windows-device validation.
 
 **Not implemented:** production extension execution host, marketplace, true OS sandboxing, complete test explorer, split editor groups, full workspace indexing, production updater, code signing, store certification.
 
