@@ -330,6 +330,53 @@ mod tests {
 
     #[cfg(windows)]
     #[test]
+    fn terminates_descendants_when_the_parent_exits() {
+        use std::{fs, process};
+
+        let marker = std::env::temp_dir().join(format!(
+            "gocode-job-child-{}.txt",
+            process::id()
+        ));
+        let _ = fs::remove_file(&marker);
+
+        let mut command = Command::new("powershell.exe");
+        command.args([
+            "-NoProfile",
+            "-NonInteractive",
+            "-Command",
+            "$p = Start-Process -FilePath 'powershell.exe' -ArgumentList '-NoProfile','-NonInteractive','-Command','Start-Sleep -Seconds 30' -PassThru; [System.IO.File]::WriteAllText($env:GOCODE_JOB_CHILD_PID_FILE, [string]$p.Id); exit 0",
+        ]);
+        command.env("GOCODE_JOB_CHILD_PID_FILE", &marker);
+
+        let (status, _output, timed_out) =
+            run_bounded_command(&mut command, 4096, Duration::from_secs(5)).unwrap();
+        assert!(status.success());
+        assert!(!timed_out);
+
+        let child_pid: u32 = fs::read_to_string(&marker)
+            .expect("parent should record descendant PID")
+            .trim()
+            .parse()
+            .expect("descendant PID should be numeric");
+        let _ = fs::remove_file(&marker);
+
+        // Give the OS a short scheduling window to finish processing job termination.
+        thread::sleep(Duration::from_millis(100));
+        let probe = format!(
+            "if (Get-Process -Id {child_pid} -ErrorAction SilentlyContinue) {{ exit 1 }} else {{ exit 0 }}"
+        );
+        let probe_status = Command::new("powershell.exe")
+            .args(["-NoProfile", "-NonInteractive", "-Command", &probe])
+            .status()
+            .unwrap();
+        assert!(
+            probe_status.success(),
+            "descendant process {child_pid} remained alive after its parent exited"
+        );
+    }
+
+    #[cfg(windows)]
+    #[test]
     fn terminates_a_command_after_timeout() {
         let mut command = Command::new("powershell.exe");
         command.args(["-NoProfile", "-Command", "Start-Sleep -Seconds 5"]);
