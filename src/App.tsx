@@ -107,6 +107,7 @@ export default function App() {
   const [lspReferences, setLspReferences] = useState<ReferenceLocation[]>([]);
   const lspRequestSeq = useRef(2);
   const lspRequestKinds = useRef<Record<number, string>>({});
+  const lspLatestRequests = useRef<Record<string, number>>({});
   const lspRequestTimers = useRef<Record<number, number>>({});
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapOutput, setDapOutput] = useState<string[]>([]);
@@ -468,10 +469,21 @@ export default function App() {
   async function sendLspRequest(method: string, params: Record<string, unknown>) {
     if (!lspSessionId || !lspReady || !projectRoot) return;
     const id = lspRequestSeq.current++;
+    if (method === "textDocument/hover" || method === "textDocument/completion") {
+      const previousId = lspLatestRequests.current[method];
+      if (previousId !== undefined) {
+        window.clearTimeout(lspRequestTimers.current[previousId]);
+        delete lspRequestTimers.current[previousId];
+        delete lspRequestKinds.current[previousId];
+        void invoke("lsp_send", { sessionId: lspSessionId, message: { jsonrpc: "2.0", method: "$/cancelRequest", params: { id: previousId } } }).catch(() => undefined);
+      }
+      lspLatestRequests.current[method] = id;
+    }
     lspRequestKinds.current[id] = method;
     lspRequestTimers.current[id] = window.setTimeout(() => {
       delete lspRequestKinds.current[id];
       delete lspRequestTimers.current[id];
+      if (lspLatestRequests.current[method] === id) delete lspLatestRequests.current[method];
       // JSON-RPC cancellation is advisory, but it lets capable language servers
       // stop expensive work after the editor has abandoned a timed-out request.
       void invoke("lsp_send", {
@@ -489,6 +501,7 @@ export default function App() {
       window.clearTimeout(lspRequestTimers.current[id]);
       delete lspRequestTimers.current[id];
       delete lspRequestKinds.current[id];
+      if (lspLatestRequests.current[method] === id) delete lspLatestRequests.current[method];
       setMessage("Language-server request failed: " + String(error));
     }
   }
@@ -513,6 +526,7 @@ export default function App() {
     for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
     lspRequestTimers.current = {};
     lspRequestKinds.current = {};
+    lspLatestRequests.current = {};
     lspOpenedDocuments.current.clear();
     lspDocumentVersion.current = 1;
     setEditorDiagnostics([]);
@@ -574,6 +588,8 @@ export default function App() {
           if (typeof message.id === "number" && Number.isFinite(message.id)) {
             window.clearTimeout(lspRequestTimers.current[message.id]);
             delete lspRequestTimers.current[message.id];
+            const responseKind = lspRequestKinds.current[message.id];
+            if (responseKind && lspLatestRequests.current[responseKind] === message.id) delete lspLatestRequests.current[responseKind];
           }
           if (message.error) {
             if (typeof message.id === "number") delete lspRequestKinds.current[message.id];
@@ -637,6 +653,7 @@ export default function App() {
           for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
           lspRequestTimers.current = {};
           lspRequestKinds.current = {};
+          lspLatestRequests.current = {};
           setLspSessionId(null);
           lspOpenedDocuments.current.clear();
           setMessage("Language server exited.");
