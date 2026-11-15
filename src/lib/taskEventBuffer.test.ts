@@ -43,7 +43,7 @@ describe("TaskEventBuffer", () => {
     buffer.push({ kind: "completed", task_id: "task-1", result: { command: "npm test", success: true, output: "ok" } });
     const events = buffer.activate("task-1");
     expect(events).toHaveLength(256);
-    expect(events.at(-1)?.kind).toBe("completed");
+    expect(events[events.length - 1]?.kind).toBe("completed");
   });
 
   it("ignores events after reset or completion", () => {
