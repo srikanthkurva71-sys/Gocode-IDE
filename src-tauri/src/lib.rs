@@ -334,6 +334,37 @@ fn git_diff(state: State<'_, ProjectState>) -> Result<String, String> {
 }
 
 #[tauri::command]
+fn git_apply_hunk(state: State<'_, ProjectState>, patch: String, action: String) -> Result<String, String> {
+    use std::process::Stdio;
+
+    if patch.is_empty() || patch.len() > 1_000_000 || patch.contains('\0')
+        || !patch.starts_with("diff --git ") || !patch.contains("\n@@ ")
+    {
+        return Err("Invalid or oversized Git hunk patch.".into());
+    }
+    let args: &[&str] = match action.as_str() {
+        "stage" => &["apply", "--cached", "--whitespace=nowarn", "-"],
+        "unstage" => &["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"],
+        "discard" => &["apply", "--reverse", "--whitespace=nowarn", "-"],
+        _ => return Err("Unsupported Git hunk action.".into()),
+    };
+    let root = project_root(&state)?;
+    let mut child = Command::new("git")
+        .arg("-C").arg(&root).args(args)
+        .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
+        .spawn().map_err(|e| format!("Could not start Git: {e}"))?;
+    if let Some(mut stdin) = child.stdin.take() {
+        stdin.write_all(patch.as_bytes()).map_err(|e| format!("Could not send Git hunk patch: {e}"))?;
+    }
+    let output = child.wait_with_output().map_err(|e| format!("Could not apply Git hunk: {e}"))?;
+    if !output.status.success() {
+        let error = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git rejected the hunk without applying it: {}", error.trim()));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+#[tauri::command]
 fn git_stage_all(state: State<'_, ProjectState>) -> Result<String, String> {
     let root = project_root(&state)?;
     run_git(&root, &["add", "--all"])?;
@@ -997,6 +1028,7 @@ pub fn run() {
             create_project_directory,
             git_status,
             git_diff,
+            git_apply_hunk,
             git_stage_all,
             git_commit,
             git_list_branches,
