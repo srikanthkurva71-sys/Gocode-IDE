@@ -54,4 +54,86 @@ mod tests {
         assert_eq!(apply_args("discard").unwrap(), &["apply", "--reverse", "--whitespace=nowarn", "-"]);
         assert!(apply_args("reset-hard").is_err());
     }
+    fn run_git(root: &std::path::Path, args: &[&str]) -> String {
+        let output = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .output()
+            .expect("Git must be installed for the hunk integration test");
+        assert!(
+            output.status.success(),
+            "git {args:?} failed: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).into_owned()
+    }
+
+    #[test]
+    fn stage_unstage_and_discard_change_only_the_selected_working_diff() {
+        use std::{
+            fs,
+            io::Write,
+            process::Stdio,
+            time::{SystemTime, UNIX_EPOCH},
+        };
+
+        let unique = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-git-hunk-test-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+
+        run_git(&root, &["init", "-q"]);
+        run_git(&root, &["config", "user.name", "Gocode IDE Tests"]);
+        run_git(&root, &["config", "user.email", "gocode-tests@example.invalid"]);
+        let file = root.join("sample.txt");
+        fs::write(&file, "first\noriginal\nlast\n").unwrap();
+        run_git(&root, &["add", "sample.txt"]);
+        run_git(&root, &["commit", "-q", "-m", "initial"]);
+
+        fs::write(&file, "first\nmodified\nlast\n").unwrap();
+        let patch = run_git(&root, &["diff", "--", "sample.txt"]);
+        validate_hunk_patch(&patch).unwrap();
+
+        let apply = |action: &str, patch: &str| {
+            let args = apply_args(action).unwrap();
+            let mut child = std::process::Command::new("git")
+                .arg("-C")
+                .arg(&root)
+                .args(args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()
+                .unwrap();
+            child.stdin.take().unwrap().write_all(patch.as_bytes()).unwrap();
+            let output = child.wait_with_output().unwrap();
+            assert!(
+                output.status.success(),
+                "git apply {action} failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            );
+        };
+
+        apply("stage", &patch);
+        assert!(run_git(&root, &["diff", "--cached"]).contains("+modified"));
+        assert!(run_git(&root, &["diff"]).is_empty());
+
+        // Recreate an unstaged change, then verify unstage leaves the worktree intact.
+        run_git(&root, &["reset", "-q", "HEAD"]);
+        assert!(run_git(&root, &["diff"]).contains("+modified"));
+        apply("stage", &patch);
+        apply("unstage", &patch);
+        assert!(run_git(&root, &["diff", "--cached"]).is_empty());
+        assert!(run_git(&root, &["diff"]).contains("+modified"));
+
+        apply("discard", &patch);
+        assert!(run_git(&root, &["diff"]).is_empty());
+        assert_eq!(fs::read_to_string(&file).unwrap(), "first\noriginal\nlast\n");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
 }
