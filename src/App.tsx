@@ -117,6 +117,7 @@ export default function App() {
   const lspRetryAttempt = useRef(0);
   const lspRetryTimer = useRef<number | null>(null);
   const lspRecoveryGeneration = useRef(0);
+  const lspRecoveryEnabled = useRef(false);
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
   const [dapLaunchProfiles, setDapLaunchProfiles] = useState<DebugLaunchProfile[]>([]);
   const [selectedDapProfile, setSelectedDapProfile] = useState("");
@@ -231,6 +232,7 @@ export default function App() {
 
   async function startLanguageServer() {
     clearLspRecovery(true);
+    lspRecoveryEnabled.current = true;
     if (!isTauri()) { setMessage("Language servers are available only in the installed desktop app."); return; }
     if (!projectRoot) { setMessage("Open a native project folder before starting a language server."); return; }
     const executable = window.prompt("Enter the full path to a language-server executable you installed and trust:");
@@ -643,6 +645,7 @@ export default function App() {
 
   async function stopLanguageServer() {
     clearLspRecovery(true);
+    lspRecoveryEnabled.current = false;
     if (!lspSessionId) return;
     try { await invoke("lsp_stop", { sessionId: lspSessionId }); }
     catch (error) { setMessage("Language-server stop failed: " + String(error)); }
@@ -661,6 +664,7 @@ export default function App() {
 
   async function restartLanguageServer() {
     clearLspRecovery(true);
+    lspRecoveryEnabled.current = true;
     const config = lspLaunchConfig.current;
     if (!config || !projectRoot || !isTauri()) {
       setMessage("Start a language server once before using restart.");
@@ -827,7 +831,7 @@ export default function App() {
           setLspSessionId(null);
           lspOpenedDocuments.current.clear();
           setMessage("Language server exited.");
-          scheduleLspRecovery();
+          if (lspRecoveryEnabled.current) scheduleLspRecovery();
         }
       })
     ]).then(([message, error, exited]) => {
