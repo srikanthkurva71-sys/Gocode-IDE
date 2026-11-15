@@ -1020,10 +1020,13 @@ export default function App() {
   // Recover only into the editor after checking current disk contents. The disk is never
   // overwritten automatically; a later explicit save still uses the verified disk baseline.
   useEffect(() => {
-    if (!projectRoot || !isTauri() || !recoverySnapshot ||
-        recoverySnapshot.projectRoot !== projectRoot || recoveryCheckStarted.current ||
-        projectEntries.length === 0) return;
+    if (!projectRoot || !isTauri() || !recoverySnapshot || recoveryCheckStarted.current) return;
+    if (recoverySnapshot.projectRoot !== projectRoot) {
+      setRecoveryCheckComplete(true);
+      return;
+    }
     recoveryCheckStarted.current = true;
+    let cancelled = false;
     void (async () => {
       const candidates: Array<{ path: string; content: string; disk: string }> = [];
       const conflicts: string[] = [];
@@ -1037,6 +1040,7 @@ export default function App() {
           missing.push(path);
         }
       }
+      if (cancelled) return;
       if (candidates.length) {
         const details = [
           "Gocode IDE found " + candidates.length + " unsaved project buffer(s) from the previous session.",
@@ -1062,7 +1066,8 @@ export default function App() {
       setRecoverySnapshot(null);
       setRecoveryCheckComplete(true);
     })();
-  }, [projectEntries, projectRoot, recoverySnapshot]);
+    return () => { cancelled = true; };
+  }, [projectRoot, recoverySnapshot]);
 
   useEffect(() => {
     if (!showTerminal || !isTauri() || !terminalHost.current) return;
