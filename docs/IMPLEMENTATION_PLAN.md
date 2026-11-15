@@ -26,7 +26,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [x] Preserve UTF-8 BOM and dominant LF/CRLF/CR newline style across native editor round-trips; reject invalid UTF-8 instead of silently corrupting bytes.
 - [x] Add bounded local project-buffer crash recovery snapshots and explicit restore confirmation; verify disk baselines and restore into the editor without writing to disk.
 - [x] Add a fixed-row virtualized project tree with bounded DOM rendering and collapsed-directory filtering.
-- [ ] Add cancellable native project search (current native search is bounded but a running scan cannot yet be interrupted).
+- [x] Add cancellable native project search with generation-based cancellation checks during directory traversal and line scanning, a native cancel command, and stale-result protection in the UI.
 - Acceptance: tests cover dirty buffers, external modification, crash recovery, Unicode paths, traversal and symlink escape.
 
 ## Stage 3 — Workbench usability and performance

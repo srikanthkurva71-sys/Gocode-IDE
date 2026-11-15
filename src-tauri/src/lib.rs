@@ -34,6 +34,19 @@ struct ProjectState {
     root: Mutex<Option<PathBuf>>,
 }
 
+#[derive(Default)]
+struct ProjectSearchState {
+    generation: AtomicU64,
+}
+
+fn ensure_project_search_current(generation: &AtomicU64, request_generation: u64) -> Result<(), String> {
+    if generation.load(Ordering::Relaxed) == request_generation {
+        Ok(())
+    } else {
+        Err("Project search cancelled.".into())
+    }
+}
+
 #[derive(Serialize)]
 struct ProjectEntry {
     path: String,
@@ -83,9 +96,14 @@ fn project_root(state: &State<'_, ProjectState>) -> Result<PathBuf, String> {
 }
 
 #[tauri::command]
-fn set_project_root(state: State<'_, ProjectState>, path: String) -> Result<String, String> {
+fn set_project_root(
+    state: State<'_, ProjectState>,
+    search_state: State<'_, ProjectSearchState>,
+    path: String,
+) -> Result<String, String> {
     let canonical = fs::canonicalize(&path).map_err(|e| format!("Cannot open project folder: {e}"))?;
     if !canonical.is_dir() { return Err("Selected project path is not a directory.".into()); }
+    search_state.generation.fetch_add(1, Ordering::Relaxed);
     *state.root.lock().map_err(|_| "Project state unavailable.".to_string())? = Some(canonical.clone());
     Ok(canonical.to_string_lossy().to_string())
 }
@@ -145,15 +163,22 @@ fn normalize_search_query(query: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResult>, String> {
+fn search_project_root(
+    root: &Path,
+    query: &str,
+    generation: &AtomicU64,
+    request_generation: u64,
+) -> Result<Vec<ProjectSearchResult>, String> {
     let mut stack = vec![(root.to_path_buf(), String::new())];
     let mut results = Vec::new();
     let mut inspected_files = 0usize;
     let mut inspected_entries = 0usize;
     while let Some((directory, prefix)) = stack.pop() {
+        ensure_project_search_current(generation, request_generation)?;
         let read = fs::read_dir(&directory)
             .map_err(|e| format!("Cannot read project directory: {e}"))?;
         for item in read.flatten() {
+            ensure_project_search_current(generation, request_generation)?;
             inspected_entries += 1;
             if inspected_entries > 10000 { break; }
             let name = item.file_name().to_string_lossy().to_string();
@@ -182,6 +207,7 @@ fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResu
                 Err(_) => continue,
             };
             for (index, line) in contents.lines().enumerate() {
+                ensure_project_search_current(generation, request_generation)?;
                 if line.to_lowercase().contains(query) {
                     let mut snippet = line.trim().to_string();
                     if snippet.len() > 240 {
@@ -193,12 +219,16 @@ fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResu
                         line_number: index + 1,
                         snippet,
                     });
-                    if results.len() >= 200 { return Ok(results); }
+                    if results.len() >= 200 {
+                        ensure_project_search_current(generation, request_generation)?;
+                        return Ok(results);
+                    }
                 }
             }
         }
         if inspected_files > 10000 || inspected_entries > 10000 { break; }
     }
+    ensure_project_search_current(generation, request_generation)?;
     results.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()).then(a.line_number.cmp(&b.line_number)));
     Ok(results)
 }
@@ -206,11 +236,18 @@ fn search_project_root(root: &Path, query: &str) -> Result<Vec<ProjectSearchResu
 #[tauri::command]
 fn search_project_files(
     state: State<'_, ProjectState>,
+    search_state: State<'_, ProjectSearchState>,
     query: String,
 ) -> Result<Vec<ProjectSearchResult>, String> {
     let root = project_root(&state)?;
     let query = normalize_search_query(&query)?;
-    search_project_root(&root, &query)
+    let request_generation = search_state.generation.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+    search_project_root(&root, &query, &search_state.generation, request_generation)
+}
+
+#[tauri::command]
+fn cancel_project_search(search_state: State<'_, ProjectSearchState>) {
+    search_state.generation.fetch_add(1, Ordering::Relaxed);
 }
 
 #[tauri::command]
@@ -999,6 +1036,7 @@ pub fn run() {
         .manage(lsp::LspState::default())
         .manage(dap::DapState::default())
         .manage(ProjectState::default())
+        .manage(ProjectSearchState::default())
         .manage(ProjectTaskState::default())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -1017,6 +1055,7 @@ pub fn run() {
             get_project_root,
             list_project_files,
             search_project_files,
+            cancel_project_search,
             read_project_file,
             write_project_file,
             create_project_directory,
@@ -1041,7 +1080,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod project_path_tests {
-    use super::{ensure_safe_parent_directories, normalize_search_query, safe_relative_path};
+    use super::{ensure_project_search_current, ensure_safe_parent_directories, normalize_search_query, safe_relative_path};
     use std::path::Path;
 
     #[test]
@@ -1063,13 +1102,14 @@ mod project_path_tests {
     #[test]
     fn search_finds_case_insensitive_matches_with_line_numbers() {
         use super::search_project_root;
-        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+        use std::{fs, sync::atomic::AtomicU64, time::{SystemTime, UNIX_EPOCH}};
 
         let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let root = std::env::temp_dir().join(format!("gocode-search-test-{unique}"));
         fs::create_dir_all(root.join("src")).unwrap();
         fs::write(root.join("src").join("main.rs"), "fn main() {}\nlet TARGET = 1;\n").unwrap();
-        let results = search_project_root(&root, "target").unwrap();
+        let generation = AtomicU64::new(1);
+        let results = search_project_root(&root, "target", &generation, 1).unwrap();
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].path, "src/main.rs");
         assert_eq!(results[0].line_number, 2);
@@ -1080,17 +1120,27 @@ mod project_path_tests {
     #[test]
     fn search_skips_generated_directories() {
         use super::search_project_root;
-        use std::{fs, time::{SystemTime, UNIX_EPOCH}};
+        use std::{fs, sync::atomic::AtomicU64, time::{SystemTime, UNIX_EPOCH}};
 
         let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
         let root = std::env::temp_dir().join(format!("gocode-search-test-{unique}"));
         fs::create_dir_all(root.join("node_modules")).unwrap();
         fs::write(root.join("node_modules").join("hidden.txt"), "secretneedle").unwrap();
-        let results = search_project_root(&root, "secretneedle").unwrap();
+        let generation = AtomicU64::new(1);
+        let results = search_project_root(&root, "secretneedle", &generation, 1).unwrap();
         assert!(results.is_empty());
         fs::remove_dir_all(root).unwrap();
     }
 
+
+
+    #[test]
+    fn project_search_stops_when_its_generation_is_cancelled() {
+        use std::sync::atomic::AtomicU64;
+        let generation = AtomicU64::new(2);
+        let result = ensure_project_search_current(&generation, 1);
+        assert_eq!(result.unwrap_err(), "Project search cancelled.");
+    }
 
     #[test]
     fn creates_nested_project_directories_safely() {
