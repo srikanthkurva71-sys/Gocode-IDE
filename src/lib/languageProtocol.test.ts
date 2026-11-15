@@ -26,12 +26,12 @@ describe("Content-Length protocol framing", () => {
   });
 
   it("rejects missing or duplicate Content-Length headers", () => {
-    expect(() => parseProtocolFrames(new TextEncoder().encode("X-Test: 1\\r\\n\\r\\n{}"))).toThrow(/exactly one Content-Length/);
-    expect(() => parseProtocolFrames(new TextEncoder().encode("Content-Length: 2\\r\\ncontent-length: 2\\r\\n\\r\\n{}"))).toThrow(/exactly one Content-Length/);
+    expect(() => parseProtocolFrames(new TextEncoder().encode("X-Test: 1\r\n\r\n{}"))).toThrow(/exactly one Content-Length/);
+    expect(() => parseProtocolFrames(new TextEncoder().encode("Content-Length: 2\r\ncontent-length: 2\r\n\r\n{}"))).toThrow(/exactly one Content-Length/);
   });
 
   it("rejects non-JSON-RPC objects", () => {
-    const frame = new TextEncoder().encode("Content-Length: 2\\r\\n\\r\\n{}");
+    const frame = new TextEncoder().encode("Content-Length: 2\r\n\r\n{}");
     expect(() => parseProtocolFrames(frame)).toThrow(/JSON-RPC 2.0/);
   });
 });
