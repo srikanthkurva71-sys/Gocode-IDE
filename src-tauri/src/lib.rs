@@ -456,22 +456,6 @@ fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, S
     }
     Ok(tasks)
 }
-
-
-    let root = project_root(&state)?;
-    let mut tasks = Vec::new();
-    if root.join("package.json").is_file() {
-        tasks.push("npm run build".to_string());
-        tasks.push("npm test".to_string());
-    }
-    if root.join("Cargo.toml").is_file() { tasks.push("cargo build".to_string()); tasks.push("cargo test".to_string()); }
-    if root.join("pyproject.toml").is_file() || root.join("setup.py").is_file() { tasks.push("python -m compileall .".to_string()); }
-    if root.join("Makefile").is_file() { tasks.push("make".to_string()); }
-    if root.join("go.mod").is_file() { tasks.push("go build ./...".to_string()); tasks.push("go test ./...".to_string()); }
-    if root.join("CMakeLists.txt").is_file() { tasks.push("cmake -S . -B build".to_string()); }
-    Ok(tasks)
-}
-
 fn compile_and_run_source_controlled(
     compiler: &str,
     source: &Path,
