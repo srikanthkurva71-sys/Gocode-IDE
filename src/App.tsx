@@ -764,7 +764,7 @@ export default function App() {
   }
   async function saveProjectFile() {
     try {
-      await invoke("write_project_file", { path: fileName, content: text });
+      await invoke("write_project_file", { path: fileName, content: text, expectedContent: savedProjectContents[fileName] ?? "" });
       await notifyLspDocumentSaved(fileName);
       setSavedProjectContents(current => ({ ...current, [fileName]: text }));
       setMessage("Saved project file " + fileName);
@@ -927,7 +927,7 @@ export default function App() {
     try {
       for (const name of dirty) {
         const body = files[name] ?? "";
-        await invoke("write_project_file", { path: name, content: body });
+        await invoke("write_project_file", { path: name, content: body, expectedContent: savedProjectContents[name] ?? "" });
         await notifyLspDocumentSaved(name);
         setSavedProjectContents(current => ({ ...current, [name]: body }));
         saved += 1;
