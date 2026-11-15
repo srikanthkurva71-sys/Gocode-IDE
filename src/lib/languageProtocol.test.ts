@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { encodeProtocolMessage, normalizeLspDiagnostics, parseProtocolFrames } from "./languageProtocol";
+import { encodeProtocolMessage, isProjectFileUri, normalizeLspDiagnostics, parseProtocolFrames } from "./languageProtocol";
 
 describe("Content-Length protocol framing", () => {
   it("round-trips JSON-RPC payloads with non-ASCII text using UTF-8 byte lengths", () => {
@@ -47,5 +47,19 @@ describe("normalizeLspDiagnostics", () => {
     expect(normalizeLspDiagnostics([null, { message: "no range" }, { range: { start: { line: -1, character: -1 }, end: { line: 0, character: 0 } }, message: "safe" }])[0])
       .toMatchObject({ lineNumber: 1, column: 1 });
     expect(normalizeLspDiagnostics(Array.from({ length: 1001 }, () => ({ range: { start: { line: 0, character: 0 }, end: { line: 0, character: 1 } }, message: "x" })))).toHaveLength(1000);
+  });
+});
+
+describe("project-local LSP URI filtering", () => {
+  it("accepts files below the project root", () => {
+    expect(isProjectFileUri("file:///C:/work/project/src/main.rs", "file:///C:/work/project")).toBe(true);
+    expect(isProjectFileUri("file:///C:/work/project/folder%20name/file.ts", "file:///C:/work/project/")).toBe(true);
+  });
+
+  it("rejects sibling paths, outside paths, non-strings, and oversized URIs", () => {
+    expect(isProjectFileUri("file:///C:/work/project-old/file.ts", "file:///C:/work/project")).toBe(false);
+    expect(isProjectFileUri("file:///C:/work/other/file.ts", "file:///C:/work/project")).toBe(false);
+    expect(isProjectFileUri(null, "file:///C:/work/project")).toBe(false);
+    expect(isProjectFileUri("x".repeat(8193), "file:///C:/work/project")).toBe(false);
   });
 });
