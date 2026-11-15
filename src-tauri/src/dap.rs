@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    time::{Duration, Instant},
+    time::Duration,
     io::{BufRead, BufReader, Read, Write},
     process::{Child, ChildStdin, Command, Stdio},
     sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex},
@@ -128,7 +128,7 @@ pub fn dap_start(app: AppHandle, state: State<'_, DapState>, executable: String,
             }
         }
     });
-    let mut session = DapSession { child: child.clone(), stdin };
+    let session = DapSession { child: child.clone(), stdin };
     // The frontend sends initialize after subscribing to events so an immediate
     // adapter response cannot race ahead of the UI listeners.
     let sessions = state.sessions.clone();
