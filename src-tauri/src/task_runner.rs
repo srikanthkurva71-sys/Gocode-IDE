@@ -116,6 +116,16 @@ pub fn run_bounded_command(
     let started = Instant::now();
     let (status, timed_out) = loop {
         if let Some(status) = child.try_wait()? {
+            // A child may exit while a descendant still holds inherited stdout or
+            // stderr handles. Terminate any remaining members of this task's
+            // isolated process group before joining the pipe readers.
+            #[cfg(unix)]
+            {
+                let process_group = -(child.id() as libc::pid_t);
+                // SAFETY: this process group was created exclusively for this
+                // command via CommandExt::process_group(0) before spawning it.
+                unsafe { libc::kill(process_group, libc::SIGKILL); }
+            }
             break (status, false);
         }
         if started.elapsed() >= timeout {
@@ -184,6 +194,19 @@ mod tests {
         assert!(output.starts_with("12345"));
         assert!(output.ends_with("[Output truncated]"));
     }
+    #[cfg(unix)]
+    #[test]
+    fn reaps_descendants_that_keep_output_pipes_open_after_parent_exit() {
+        let mut command = Command::new("sh");
+        command.args(["-c", "sleep 10 & exit 0"]);
+        let started = Instant::now();
+        let (status, _output, timed_out) =
+            run_bounded_command(&mut command, 1024, Duration::from_secs(3)).unwrap();
+        assert!(status.success());
+        assert!(!timed_out);
+        assert!(started.elapsed() < Duration::from_secs(2));
+    }
+
     #[cfg(unix)]
     #[test]
     fn terminates_a_command_after_timeout() {
