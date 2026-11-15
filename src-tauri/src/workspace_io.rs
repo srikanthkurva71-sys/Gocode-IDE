@@ -7,6 +7,35 @@ use std::{
 
 static TEMP_SEQUENCE: AtomicU64 = AtomicU64::new(0);
 
+/// Refuse to overwrite a file that changed on disk since the editor loaded it.
+/// A missing baseline is valid only when the target does not exist yet.
+pub fn verify_expected_contents(target: &Path, expected: Option<&str>) -> io::Result<()> {
+    match fs::symlink_metadata(target) {
+        Ok(metadata) if metadata.file_type().is_symlink() => {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "refusing to save through a symbolic link"));
+        }
+        Ok(metadata) if !metadata.is_file() => {
+            return Err(io::Error::new(io::ErrorKind::InvalidInput, "target is not a regular file"));
+        }
+        Ok(_) => {
+            let Some(expected) = expected else {
+                return Err(io::Error::new(io::ErrorKind::AlreadyExists, "file already exists and has no saved baseline"));
+            };
+            let current = fs::read_to_string(target)?;
+            if current != expected {
+                return Err(io::Error::new(io::ErrorKind::AlreadyExists, "file changed on disk since it was opened; reload or compare before saving"));
+            }
+        }
+        Err(error) if error.kind() == io::ErrorKind::NotFound => {
+            if expected.is_some() {
+                return Err(io::Error::new(io::ErrorKind::NotFound, "file was deleted or moved since it was opened"));
+            }
+        }
+        Err(error) => return Err(error),
+    }
+    Ok(())
+}
+
 /// Write a sibling temporary file and atomically rename it over the target.
 /// Keeping the temporary file in the same directory keeps the rename on one volume.
 pub fn atomic_write_file(target: &Path, content: &[u8]) -> io::Result<()> {
@@ -81,6 +110,36 @@ mod tests {
         let path = std::env::temp_dir().join(format!("gocode-workspace-{}-{stamp}", std::process::id()));
         fs::create_dir_all(&path).unwrap();
         path
+    }
+
+
+    #[test]
+    fn rejects_external_modification_since_open() {
+        let directory = test_directory();
+        let target = directory.join("shared.txt");
+        fs::write(&target, "external version").unwrap();
+        let error = verify_expected_contents(&target, Some("editor's old version")).unwrap_err();
+        assert!(error.to_string().contains("changed on disk"));
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn permits_save_when_disk_matches_saved_baseline() {
+        let directory = test_directory();
+        let target = directory.join("same.txt");
+        fs::write(&target, "same content").unwrap();
+        verify_expected_contents(&target, Some("same content")).unwrap();
+        fs::remove_dir_all(directory).unwrap();
+    }
+
+    #[test]
+    fn refuses_to_overwrite_existing_file_without_baseline() {
+        let directory = test_directory();
+        let target = directory.join("already-there.txt");
+        fs::write(&target, "keep me").unwrap();
+        assert!(verify_expected_contents(&target, None).is_err());
+        assert_eq!(fs::read_to_string(&target).unwrap(), "keep me");
+        fs::remove_dir_all(directory).unwrap();
     }
 
     #[test]
