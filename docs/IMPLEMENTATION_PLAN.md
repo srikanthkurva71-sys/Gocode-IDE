@@ -19,7 +19,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Stage 2 — Workspace and editor correctness
 - [ ] Consolidate native project buffers and browser-local buffers behind explicit storage adapters.
-- [ ] Add external-file-change detection and conflict-safe save.
+- [x] Add external-file-change detection using saved disk baselines; reject stale saves instead of silently overwriting external edits.
 - [x] Add atomic writes for native project saves.\n- [ ] Preserve original encoding and line-ending style during editor round-trips.
 - [ ] Add bounded local crash recovery and recovery UI.
 - [ ] Add lazy/virtualized project tree and cancellable search.
