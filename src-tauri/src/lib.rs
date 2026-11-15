@@ -503,11 +503,11 @@ struct ProjectTaskState {
     next_id: AtomicU64,
     running: Arc<Mutex<HashMap<String, Arc<AtomicBool>>>>,
 }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct TaskOutputEvent { task_id: String, data: String }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct TaskProgressEvent { task_id: String, state: String }
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 struct TaskCompletedEvent { task_id: String, result: TaskResult }
 
 #[tauri::command]
