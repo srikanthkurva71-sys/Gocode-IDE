@@ -36,7 +36,7 @@ struct ProjectState {
 
 #[derive(Default)]
 struct ProjectSearchState {
-    generation: AtomicU64,
+    generation: Arc<AtomicU64>,
 }
 
 fn ensure_project_search_current(generation: &AtomicU64, request_generation: u64) -> Result<(), String> {
@@ -234,15 +234,23 @@ fn search_project_root(
 }
 
 #[tauri::command]
-fn search_project_files(
+async fn search_project_files(
     state: State<'_, ProjectState>,
     search_state: State<'_, ProjectSearchState>,
     query: String,
 ) -> Result<Vec<ProjectSearchResult>, String> {
     let root = project_root(&state)?;
     let query = normalize_search_query(&query)?;
-    let request_generation = search_state.generation.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
-    search_project_root(&root, &query, &search_state.generation, request_generation)
+    let generation = Arc::clone(&search_state.generation);
+    let request_generation = generation.fetch_add(1, Ordering::Relaxed).wrapping_add(1);
+    drop(search_state);
+    drop(state);
+
+    tauri::async_runtime::spawn_blocking(move || {
+        search_project_root(&root, &query, &generation, request_generation)
+    })
+    .await
+    .map_err(|error| format!("Project search worker failed: {error}"))?
 }
 
 #[tauri::command]
@@ -1135,10 +1143,17 @@ mod project_path_tests {
 
 
     #[test]
-    fn project_search_stops_when_its_generation_is_cancelled() {
+    fn project_search_stops_before_reading_a_directory_when_cancelled() {
+        use super::search_project_root;
         use std::sync::atomic::AtomicU64;
+
         let generation = AtomicU64::new(2);
-        let result = ensure_project_search_current(&generation, 1);
+        let result = search_project_root(
+            Path::new("directory-that-must-not-be-read"),
+            "needle",
+            &generation,
+            1,
+        );
         assert_eq!(result.unwrap_err(), "Project search cancelled.");
     }
 
