@@ -103,6 +103,9 @@ export default function App() {
   const [editorDiagnostics, setEditorDiagnostics] = useState<EditorDiagnostic[]>([]);
   const [lspDiagnosticsByUri, setLspDiagnosticsByUri] = useState<Record<string, EditorDiagnostic[]>>({});
   const [lspSessionId, setLspSessionId] = useState<string | null>(null);
+  const lspSessionIdRef = useRef<string | null>(null);
+  lspSessionIdRef.current = lspSessionId;
+  const lspInitializationFailed = useRef<string | null>(null);
   const [lspReady, setLspReady] = useState(false);
   const [lspOutput, setLspOutput] = useState<string[]>([]);
   const [lspHoverText, setLspHoverText] = useState("");
@@ -193,7 +196,7 @@ export default function App() {
 
   function scheduleLspRecovery() {
     const config = lspLaunchConfig.current;
-    if (!config || !projectRoot || !isTauri()) return;
+    if (!lspRecoveryEnabled.current || !config || !projectRoot || !isTauri()) return;
     const nextAttempt = lspRetryAttempt.current + 1;
     const delay = getLspRecoveryDelay(nextAttempt);
     if (delay === null) {
@@ -228,6 +231,25 @@ export default function App() {
         }
       }
     }, delay);
+  }
+
+  async function failLspInitialization(sessionId: string, detail: string) {
+    if (lspInitializationFailed.current === sessionId) return;
+    lspInitializationFailed.current = sessionId;
+    setLspReady(false);
+    for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
+    lspRequestTimers.current = {};
+    lspRequestKinds.current = {};
+    lspLatestRequests.current = {};
+    lspOpenedDocuments.current.clear();
+    setMessage("Language-server initialization failed: " + detail);
+    try {
+      // Stop the failed process; its exit event schedules the bounded retry.
+      await invoke("lsp_stop", { sessionId });
+    } catch (error) {
+      setMessage("Language-server initialization failed and its process could not be stopped: " + String(error));
+      if (lspRecoveryEnabled.current) scheduleLspRecovery();
+    }
   }
 
   async function startLanguageServer() {
@@ -707,6 +729,14 @@ export default function App() {
     lspRecoveryGeneration.current += 1;
     if (lspRetryTimer.current !== null) window.clearTimeout(lspRetryTimer.current);
     lspRetryTimer.current = null;
+    const activeSession = lspSessionIdRef.current;
+    lspSessionIdRef.current = null;
+    if (activeSession) void invoke("lsp_stop", { sessionId: activeSession }).catch(() => undefined);
+    for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
+    lspRequestTimers.current = {};
+    lspRequestKinds.current = {};
+    lspLatestRequests.current = {};
+    lspOpenedDocuments.current.clear();
   }, [projectRoot]);
 
   useEffect(() => {
@@ -742,8 +772,8 @@ export default function App() {
         if (!active || payload.session_id !== lspSessionId) return;
         const message = payload.message;
         if (message.id === 1 && message.error) {
-          setLspReady(false);
-          setMessage("Language server initialization failed: " + String((message.error as { message?: string }).message ?? "Unknown initialize error"));
+          const detail = String((message.error as { message?: string }).message ?? "Unknown initialize error");
+          void failLspInitialization(lspSessionId, detail);
         }
         if (message.id === 1 && message.result && lspInitializeHandled.current !== lspSessionId) {
           lspInitializeHandled.current = lspSessionId;
@@ -854,7 +884,7 @@ export default function App() {
             capabilities: { textDocument: { publishDiagnostics: { relatedInformation: true }, synchronization: { didSave: true } } },
             clientInfo: { name: "Gocode IDE", version: "0.1.0" }
           }
-        }}).catch(error => setMessage("Could not initialize language server: " + String(error)));
+        }}).catch(error => { void failLspInitialization(lspSessionId, String(error)); });
       }
     });
     return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
