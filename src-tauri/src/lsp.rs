@@ -315,70 +315,55 @@ mod tests {
     }
 
 
-    // This test is also launched as a subprocess by the parent integration test.
-    // Keeping the protocol peer in a separate process exercises real pipe framing
-    // and request/response ordering without depending on an installed language server.
-    #[test]
-    fn mock_language_server_child_process() {
-        if std::env::var_os("GOCODE_IDE_MOCK_LSP_CHILD").is_none() {
-            return;
-        }
-        let stdin = std::io::stdin();
-        let stderr = std::io::stderr();
-        let mut reader = BufReader::new(stdin.lock());
-        let mut writer = stderr.lock();
-
-        let initialize = read_lsp_message(&mut reader).unwrap().unwrap();
-        assert_eq!(initialize["method"], "initialize");
-        assert_eq!(initialize["id"], 1);
-        write_lsp_message(&mut writer, &json!({
-            "jsonrpc": "2.0", "id": 1,
-            "result": { "capabilities": { "textDocumentSync": 1, "completionProvider": { "triggerCharacters": ["."] } } }
-        })).unwrap();
-
-        let initialized = read_lsp_message(&mut reader).unwrap().unwrap();
-        assert_eq!(initialized["method"], "initialized");
-        assert!(initialized.get("id").is_none());
-
-        let completion = read_lsp_message(&mut reader).unwrap().unwrap();
-        assert_eq!(completion["method"], "textDocument/completion");
-        assert_eq!(completion["id"], 2);
-        assert_eq!(completion["params"]["position"]["line"], 0);
-        write_lsp_message(&mut writer, &json!({
-            "jsonrpc": "2.0", "id": 2,
-            "result": [{ "label": "mockCompletion", "kind": 3 }]
-        })).unwrap();
-        write_lsp_message(&mut writer, &json!({
-            "jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
-            "params": { "uri": "file:///workspace/main.rs", "diagnostics": [] }
-        })).unwrap();
-
-        let shutdown = read_lsp_message(&mut reader).unwrap().unwrap();
-        assert_eq!(shutdown["method"], "shutdown");
-        assert_eq!(shutdown["id"], 3);
-        write_lsp_message(&mut writer, &json!({ "jsonrpc": "2.0", "id": 3, "result": null })).unwrap();
-
-        let exit = read_lsp_message(&mut reader).unwrap().unwrap();
-        assert_eq!(exit["method"], "exit");
-        assert!(exit.get("id").is_none());
-    }
 
     #[test]
     fn mock_language_server_process_completes_initialize_feature_and_shutdown_exchange() {
-        use std::io::Write;
         use std::process::{Command, Stdio};
 
-        let executable = std::env::current_exe().unwrap();
-        let mut child = Command::new(executable)
-            .args(["--exact", "lsp::tests::mock_language_server_child_process", "--quiet", "--nocapture"])
-            .env("GOCODE_IDE_MOCK_LSP_CHILD", "1")
+        const MOCK_SERVER: &str = r#"
+import json, sys
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if line in (b"\\r\\n", b"\\n"):
+            break
+        name, value = line.decode("ascii").split(":", 1)
+        headers[name.lower()] = value.strip()
+    body = sys.stdin.buffer.read(int(headers["content-length"]))
+    return json.loads(body)
+def send(message):
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    sys.stdout.buffer.write(("Content-Length: %d\\r\\n\\r\\n" % len(body)).encode("ascii") + body)
+    sys.stdout.buffer.flush()
+initialize = read_message()
+assert initialize["method"] == "initialize" and initialize["id"] == 1
+send({"jsonrpc":"2.0","id":1,"result":{"capabilities":{"textDocumentSync":1,"completionProvider":{"triggerCharacters":["."]}}}})
+initialized = read_message()
+assert initialized["method"] == "initialized" and "id" not in initialized
+completion = read_message()
+assert completion["method"] == "textDocument/completion" and completion["id"] == 2
+assert completion["params"]["position"]["line"] == 0
+send({"jsonrpc":"2.0","id":2,"result":[{"label":"mockCompletion","kind":3}]})
+send({"jsonrpc":"2.0","method":"textDocument/publishDiagnostics","params":{"uri":"file:///workspace/main.rs","diagnostics":[]}})
+shutdown = read_message()
+assert shutdown["method"] == "shutdown" and shutdown["id"] == 3
+send({"jsonrpc":"2.0","id":3,"result":None})
+exit_message = read_message()
+assert exit_message["method"] == "exit" and "id" not in exit_message
+"#;
+
+        let mut child = Command::new("python")
+            .args(["-u", "-c", MOCK_SERVER])
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()
-            .expect("start mock language-server process");
+            .expect("start mock language-server process (Python 3 is required for native integration tests)");
         let mut input = child.stdin.take().unwrap();
-        let mut output = BufReader::new(child.stderr.take().unwrap());
+        let mut output = BufReader::new(child.stdout.take().unwrap());
 
         write_lsp_message(&mut input, &json!({
             "jsonrpc": "2.0", "id": 1, "method": "initialize",
@@ -405,7 +390,7 @@ mod tests {
         assert!(shutdown["result"].is_null());
         write_lsp_message(&mut input, &json!({ "jsonrpc": "2.0", "method": "exit" })).unwrap();
         drop(input);
-        assert!(child.wait().unwrap().success(), "mock language server subprocess failed");
+        assert!(child.wait().unwrap().success(), "mock language server rejected the protocol exchange");
     }
 
 }

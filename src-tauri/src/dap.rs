@@ -251,69 +251,52 @@ mod tests {
     }
 
 
-    // A separate test process acts as a minimal DAP adapter on real stdin/stdout pipes.
-    #[test]
-    fn mock_debug_adapter_child_process() {
-        if std::env::var_os("GOCODE_IDE_MOCK_DAP_CHILD").is_none() {
-            return;
-        }
-        let stdin = std::io::stdin();
-        let stderr = std::io::stderr();
-        let mut reader = BufReader::new(stdin.lock());
-        let mut writer = stderr.lock();
-
-        let initialize = read_dap_message(&mut reader).unwrap().unwrap();
-        assert_eq!(initialize["type"], "request");
-        assert_eq!(initialize["command"], "initialize");
-        assert_eq!(initialize["seq"], 1);
-        write_dap_message(&mut writer, &json!({
-            "seq": 1, "type": "response", "request_seq": 1,
-            "command": "initialize", "success": true,
-            "body": { "supportsConfigurationDoneRequest": true, "supportsEvaluateForHovers": true }
-        })).unwrap();
-        write_dap_message(&mut writer, &json!({ "seq": 2, "type": "event", "event": "initialized" })).unwrap();
-
-        let launch = read_dap_message(&mut reader).unwrap().unwrap();
-        assert_eq!(launch["command"], "launch");
-        assert_eq!(launch["seq"], 2);
-        write_dap_message(&mut writer, &json!({
-            "seq": 3, "type": "response", "request_seq": 2,
-            "command": "launch", "success": true
-        })).unwrap();
-
-        let threads = read_dap_message(&mut reader).unwrap().unwrap();
-        assert_eq!(threads["command"], "threads");
-        assert_eq!(threads["seq"], 3);
-        write_dap_message(&mut writer, &json!({
-            "seq": 4, "type": "response", "request_seq": 3,
-            "command": "threads", "success": true,
-            "body": { "threads": [{ "id": 7, "name": "Mock main thread" }] }
-        })).unwrap();
-
-        let disconnect = read_dap_message(&mut reader).unwrap().unwrap();
-        assert_eq!(disconnect["command"], "disconnect");
-        assert_eq!(disconnect["seq"], 4);
-        write_dap_message(&mut writer, &json!({
-            "seq": 5, "type": "response", "request_seq": 4,
-            "command": "disconnect", "success": true
-        })).unwrap();
-    }
 
     #[test]
     fn mock_debug_adapter_process_exchanges_initialize_launch_threads_and_disconnect() {
         use std::process::{Command, Stdio};
 
-        let executable = std::env::current_exe().unwrap();
-        let mut child = Command::new(executable)
-            .args(["--exact", "dap::tests::mock_debug_adapter_child_process", "--quiet", "--nocapture"])
-            .env("GOCODE_IDE_MOCK_DAP_CHILD", "1")
+        const MOCK_ADAPTER: &str = r#"
+import json, sys
+def read_message():
+    headers = {}
+    while True:
+        line = sys.stdin.buffer.readline()
+        if not line:
+            return None
+        if line in (b"\\r\\n", b"\\n"):
+            break
+        name, value = line.decode("ascii").split(":", 1)
+        headers[name.lower()] = value.strip()
+    return json.loads(sys.stdin.buffer.read(int(headers["content-length"])))
+def send(message):
+    body = json.dumps(message, separators=(",", ":")).encode("utf-8")
+    sys.stdout.buffer.write(("Content-Length: %d\\r\\n\\r\\n" % len(body)).encode("ascii") + body)
+    sys.stdout.buffer.flush()
+initialize = read_message()
+assert initialize["type"] == "request" and initialize["command"] == "initialize" and initialize["seq"] == 1
+send({"seq":1,"type":"response","request_seq":1,"command":"initialize","success":True,"body":{"supportsConfigurationDoneRequest":True,"supportsEvaluateForHovers":True}})
+send({"seq":2,"type":"event","event":"initialized"})
+launch = read_message()
+assert launch["command"] == "launch" and launch["seq"] == 2
+send({"seq":3,"type":"response","request_seq":2,"command":"launch","success":True})
+threads = read_message()
+assert threads["command"] == "threads" and threads["seq"] == 3
+send({"seq":4,"type":"response","request_seq":3,"command":"threads","success":True,"body":{"threads":[{"id":7,"name":"Mock main thread"}]}})
+disconnect = read_message()
+assert disconnect["command"] == "disconnect" and disconnect["seq"] == 4
+send({"seq":5,"type":"response","request_seq":4,"command":"disconnect","success":True})
+"#;
+
+        let mut child = Command::new("python")
+            .args(["-u", "-c", MOCK_ADAPTER])
             .stdin(Stdio::piped())
-            .stdout(Stdio::null())
-            .stderr(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::null())
             .spawn()
-            .expect("start mock debug-adapter process");
+            .expect("start mock debug-adapter process (Python 3 is required for native integration tests)");
         let mut input = child.stdin.take().unwrap();
-        let mut output = BufReader::new(child.stderr.take().unwrap());
+        let mut output = BufReader::new(child.stdout.take().unwrap());
 
         write_dap_message(&mut input, &json!({
             "seq": 1, "type": "request", "command": "initialize",
@@ -344,7 +327,7 @@ mod tests {
         assert_eq!(disconnect["request_seq"], 4);
         assert_eq!(disconnect["success"], true);
         drop(input);
-        assert!(child.wait().unwrap().success(), "mock debug-adapter subprocess failed");
+        assert!(child.wait().unwrap().success(), "mock debug adapter rejected the protocol exchange");
     }
 
 }
