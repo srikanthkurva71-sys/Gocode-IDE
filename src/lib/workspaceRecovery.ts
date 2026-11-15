@@ -41,11 +41,11 @@ export function createWorkspaceRecoverySnapshot(
   }
   if (!Object.keys(safeFiles).length) return null;
   const snapshot: WorkspaceRecoverySnapshot = { version: 1, projectRoot, savedAt, files: safeFiles };
-  return JSON.stringify(snapshot).length <= MAX_RECOVERY_SNAPSHOT_BYTES ? snapshot : null;
+  return new TextEncoder().encode(JSON.stringify(snapshot)).byteLength <= MAX_RECOVERY_SNAPSHOT_BYTES ? snapshot : null;
 }
 
 export function parseWorkspaceRecoverySnapshot(raw: string | null): WorkspaceRecoverySnapshot | null {
-  if (!raw || raw.length > MAX_RECOVERY_SNAPSHOT_BYTES) return null;
+  if (!raw || new TextEncoder().encode(raw).byteLength > MAX_RECOVERY_SNAPSHOT_BYTES) return null;
   try {
     const value: unknown = JSON.parse(raw);
     if (!value || typeof value !== "object" || Array.isArray(value)) return null;
