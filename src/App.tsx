@@ -1043,7 +1043,7 @@ export default function App() {
           conflicts.length ? conflicts.length + " file(s) changed on disk since the recovery snapshot." : "",
           missing.length ? missing.length + " file(s) are no longer available and will be skipped." : "",
           "Restore the available buffers into the editor? Nothing will be written to disk automatically."
-        ].filter(Boolean).join("\\n");
+        ].filter(Boolean).join("\n");
         if (window.confirm(details)) {
           const recoveredFiles = Object.fromEntries(candidates.map(item => [item.path, item.content]));
           const currentBaselines = Object.fromEntries(candidates.map(item => [item.path, item.disk]));
