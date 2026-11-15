@@ -313,4 +313,99 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("16 KiB"));
     }
+
+
+    // This test is also launched as a subprocess by the parent integration test.
+    // Keeping the protocol peer in a separate process exercises real pipe framing
+    // and request/response ordering without depending on an installed language server.
+    #[test]
+    fn mock_language_server_child_process() {
+        if std::env::var_os("GOCODE_IDE_MOCK_LSP_CHILD").is_none() {
+            return;
+        }
+        let stdin = std::io::stdin();
+        let stdout = std::io::stdout();
+        let mut reader = BufReader::new(stdin.lock());
+        let mut writer = stdout.lock();
+
+        let initialize = read_lsp_message(&mut reader).unwrap().unwrap();
+        assert_eq!(initialize["method"], "initialize");
+        assert_eq!(initialize["id"], 1);
+        write_lsp_message(&mut writer, &json!({
+            "jsonrpc": "2.0", "id": 1,
+            "result": { "capabilities": { "textDocumentSync": 1, "completionProvider": { "triggerCharacters": ["."] } } }
+        })).unwrap();
+
+        let initialized = read_lsp_message(&mut reader).unwrap().unwrap();
+        assert_eq!(initialized["method"], "initialized");
+        assert!(initialized.get("id").is_none());
+
+        let completion = read_lsp_message(&mut reader).unwrap().unwrap();
+        assert_eq!(completion["method"], "textDocument/completion");
+        assert_eq!(completion["id"], 2);
+        assert_eq!(completion["params"]["position"]["line"], 0);
+        write_lsp_message(&mut writer, &json!({
+            "jsonrpc": "2.0", "id": 2,
+            "result": [{ "label": "mockCompletion", "kind": 3 }]
+        })).unwrap();
+        write_lsp_message(&mut writer, &json!({
+            "jsonrpc": "2.0", "method": "textDocument/publishDiagnostics",
+            "params": { "uri": "file:///workspace/main.rs", "diagnostics": [] }
+        })).unwrap();
+
+        let shutdown = read_lsp_message(&mut reader).unwrap().unwrap();
+        assert_eq!(shutdown["method"], "shutdown");
+        assert_eq!(shutdown["id"], 3);
+        write_lsp_message(&mut writer, &json!({ "jsonrpc": "2.0", "id": 3, "result": null })).unwrap();
+
+        let exit = read_lsp_message(&mut reader).unwrap().unwrap();
+        assert_eq!(exit["method"], "exit");
+        assert!(exit.get("id").is_none());
+    }
+
+    #[test]
+    fn mock_language_server_process_completes_initialize_feature_and_shutdown_exchange() {
+        use std::io::Write;
+        use std::process::{Command, Stdio};
+
+        let executable = std::env::current_exe().unwrap();
+        let mut child = Command::new(executable)
+            .args(["--exact", "lsp::tests::mock_language_server_child_process", "--quiet", "--nocapture"])
+            .env("GOCODE_IDE_MOCK_LSP_CHILD", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("start mock language-server process");
+        let mut input = child.stdin.take().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+
+        write_lsp_message(&mut input, &json!({
+            "jsonrpc": "2.0", "id": 1, "method": "initialize",
+            "params": { "processId": std::process::id(), "rootUri": "file:///workspace" }
+        })).unwrap();
+        let initialized = read_lsp_message(&mut output).unwrap().unwrap();
+        assert_eq!(initialized["id"], 1);
+        assert!(initialized["result"]["capabilities"]["completionProvider"].is_object());
+
+        write_lsp_message(&mut input, &json!({ "jsonrpc": "2.0", "method": "initialized", "params": {} })).unwrap();
+        write_lsp_message(&mut input, &json!({
+            "jsonrpc": "2.0", "id": 2, "method": "textDocument/completion",
+            "params": { "textDocument": { "uri": "file:///workspace/main.rs" }, "position": { "line": 0, "character": 4 } }
+        })).unwrap();
+        let completion = read_lsp_message(&mut output).unwrap().unwrap();
+        assert_eq!(completion["id"], 2);
+        assert_eq!(completion["result"][0]["label"], "mockCompletion");
+        let diagnostics = read_lsp_message(&mut output).unwrap().unwrap();
+        assert_eq!(diagnostics["method"], "textDocument/publishDiagnostics");
+
+        write_lsp_message(&mut input, &json!({ "jsonrpc": "2.0", "id": 3, "method": "shutdown", "params": null })).unwrap();
+        let shutdown = read_lsp_message(&mut output).unwrap().unwrap();
+        assert_eq!(shutdown["id"], 3);
+        assert!(shutdown["result"].is_null());
+        write_lsp_message(&mut input, &json!({ "jsonrpc": "2.0", "method": "exit" })).unwrap();
+        drop(input);
+        assert!(child.wait().unwrap().success(), "mock language server subprocess failed");
+    }
+
 }

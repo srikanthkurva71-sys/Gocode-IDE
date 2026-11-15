@@ -249,4 +249,102 @@ mod tests {
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("16 KiB"));
     }
+
+
+    // A separate test process acts as a minimal DAP adapter on real stdin/stdout pipes.
+    #[test]
+    fn mock_debug_adapter_child_process() {
+        if std::env::var_os("GOCODE_IDE_MOCK_DAP_CHILD").is_none() {
+            return;
+        }
+        let stdin = std::io::stdin();
+        let stdout = std::io::stdout();
+        let mut reader = BufReader::new(stdin.lock());
+        let mut writer = stdout.lock();
+
+        let initialize = read_dap_message(&mut reader).unwrap().unwrap();
+        assert_eq!(initialize["type"], "request");
+        assert_eq!(initialize["command"], "initialize");
+        assert_eq!(initialize["seq"], 1);
+        write_dap_message(&mut writer, &json!({
+            "seq": 1, "type": "response", "request_seq": 1,
+            "command": "initialize", "success": true,
+            "body": { "supportsConfigurationDoneRequest": true, "supportsEvaluateForHovers": true }
+        })).unwrap();
+        write_dap_message(&mut writer, &json!({ "seq": 2, "type": "event", "event": "initialized" })).unwrap();
+
+        let launch = read_dap_message(&mut reader).unwrap().unwrap();
+        assert_eq!(launch["command"], "launch");
+        assert_eq!(launch["seq"], 2);
+        write_dap_message(&mut writer, &json!({
+            "seq": 3, "type": "response", "request_seq": 2,
+            "command": "launch", "success": true
+        })).unwrap();
+
+        let threads = read_dap_message(&mut reader).unwrap().unwrap();
+        assert_eq!(threads["command"], "threads");
+        assert_eq!(threads["seq"], 3);
+        write_dap_message(&mut writer, &json!({
+            "seq": 4, "type": "response", "request_seq": 3,
+            "command": "threads", "success": true,
+            "body": { "threads": [{ "id": 7, "name": "Mock main thread" }] }
+        })).unwrap();
+
+        let disconnect = read_dap_message(&mut reader).unwrap().unwrap();
+        assert_eq!(disconnect["command"], "disconnect");
+        assert_eq!(disconnect["seq"], 4);
+        write_dap_message(&mut writer, &json!({
+            "seq": 5, "type": "response", "request_seq": 4,
+            "command": "disconnect", "success": true
+        })).unwrap();
+    }
+
+    #[test]
+    fn mock_debug_adapter_process_exchanges_initialize_launch_threads_and_disconnect() {
+        use std::process::{Command, Stdio};
+
+        let executable = std::env::current_exe().unwrap();
+        let mut child = Command::new(executable)
+            .args(["--exact", "dap::tests::mock_debug_adapter_child_process", "--quiet", "--nocapture"])
+            .env("GOCODE_IDE_MOCK_DAP_CHILD", "1")
+            .stdin(Stdio::piped())
+            .stdout(Stdio::piped())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .expect("start mock debug-adapter process");
+        let mut input = child.stdin.take().unwrap();
+        let mut output = BufReader::new(child.stdout.take().unwrap());
+
+        write_dap_message(&mut input, &json!({
+            "seq": 1, "type": "request", "command": "initialize",
+            "arguments": { "clientID": "gocode-ide", "adapterID": "mock" }
+        })).unwrap();
+        let initialized = read_dap_message(&mut output).unwrap().unwrap();
+        assert_eq!(initialized["request_seq"], 1);
+        assert!(initialized["body"]["supportsConfigurationDoneRequest"].as_bool().unwrap());
+        let event = read_dap_message(&mut output).unwrap().unwrap();
+        assert_eq!(event["type"], "event");
+        assert_eq!(event["event"], "initialized");
+
+        write_dap_message(&mut input, &json!({
+            "seq": 2, "type": "request", "command": "launch", "arguments": { "program": "mock" }
+        })).unwrap();
+        let launch = read_dap_message(&mut output).unwrap().unwrap();
+        assert_eq!(launch["request_seq"], 2);
+        assert_eq!(launch["command"], "launch");
+        assert_eq!(launch["success"], true);
+
+        write_dap_message(&mut input, &json!({ "seq": 3, "type": "request", "command": "threads" })).unwrap();
+        let threads = read_dap_message(&mut output).unwrap().unwrap();
+        assert_eq!(threads["request_seq"], 3);
+        assert_eq!(threads["body"]["threads"][0]["name"], "Mock main thread");
+
+        write_dap_message(&mut input, &json!({ "seq": 4, "type": "request", "command": "disconnect" })).unwrap();
+        let disconnect = read_dap_message(&mut output).unwrap().unwrap();
+        assert_eq!(disconnect["request_seq"], 4);
+        assert_eq!(disconnect["success"], true);
+        drop(input);
+        assert!(child.wait().unwrap().success(), "mock debug-adapter subprocess failed");
+    }
+
 }
