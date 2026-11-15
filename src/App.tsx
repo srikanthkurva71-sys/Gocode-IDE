@@ -12,7 +12,7 @@ import { open as openDialog, save as saveDialog } from "@tauri-apps/plugin-dialo
 import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { validateExtensionManifest } from "./lib/extensionManifest";
 import { parseCommandLineArguments } from "./lib/commandLine";
-import { normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
+import { normalizeDebugResponse, normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
 import { normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverResult, normalizeReferenceLocations, type LanguageFeatureItem, type ReferenceLocation } from "./lib/languageFeatures";
 import { reviewCapabilities } from "./lib/capabilityReview";
@@ -286,10 +286,24 @@ export default function App() {
         const message = event.payload.message;
         const kind = String(message.type ?? "message");
         const label = message.event ? String(message.event) : message.command ? String(message.command) : kind;
-        if (kind === "response" && typeof message.request_seq === "number") {
-          window.clearTimeout(dapRequestTimers.current[message.request_seq]);
-          delete dapRequestTimers.current[message.request_seq];
-          delete dapRequestKinds.current[message.request_seq];
+        if (kind === "response") {
+          const response = normalizeDebugResponse(message);
+          if (!response) {
+            setMessage("Debug adapter sent a malformed response; it was ignored.");
+            return;
+          }
+          const expectedCommand = dapRequestKinds.current[response.requestSeq];
+          if (!expectedCommand) {
+            setDapOutput(current => [...current, `Ignored unmatched DAP response #${response.requestSeq} (${response.command}).`].slice(-100));
+            return;
+          }
+          window.clearTimeout(dapRequestTimers.current[response.requestSeq]);
+          delete dapRequestTimers.current[response.requestSeq];
+          delete dapRequestKinds.current[response.requestSeq];
+          if (response.command !== expectedCommand) {
+            setMessage(`DAP response mismatch: expected ${expectedCommand}, received ${response.command}.`);
+            return;
+          }
         }
         setDapOutput(current => [...current, `← ${label}: ${JSON.stringify(message).slice(0, 700)}`].slice(-100));
         if (kind === "response" && message.success === false) {
