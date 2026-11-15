@@ -53,7 +53,8 @@ This plan follows the current repository and the Product Architecture. Work is d
 - [x] Add bounded LSP request timeouts and clear pending requests on response, send failure, stop and server exit.
 - [x] Send JSON-RPC cancellation notifications for timed-out and superseded hover/completion requests.
 - [x] Add explicit language-server restart using the last trusted executable and argument list, reset pending requests/diagnostics/doc state, and reinitialize the active document after restart or unexpected exit.
-- [x] Add automatic LSP crash recovery with at most three retries using bounded exponential backoff (1s, 2s, 4s); manual start/stop/restart cancels pending recovery.\n- [ ] Persist trusted language-server launch profiles across application restarts.
+- [x] Add automatic LSP crash recovery with at most three retries using bounded exponential backoff (1s, 2s, 4s); manual start/stop/restart cancels pending recovery.
+- [ ] Persist trusted language-server launch profiles across application restarts.
 - [ ] Add mock language-server integration tests and test at least one real server on Windows.
 - [x] Add debugger stepping controls (continue, step over, step into, step out and pause) alongside existing thread, stack-frame, scope and variable views.
 - [x] Handle core DAP stopped/continued/thread/output/breakpoint/terminated/exited events, request failures, and clear stale inspection state when sessions end.
