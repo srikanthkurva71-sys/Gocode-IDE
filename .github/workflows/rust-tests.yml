@@ -1,0 +1,36 @@
+name: Rust native tests
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ["work/**"]
+    paths:
+      - "src-tauri/**"
+      - ".github/workflows/rust-tests.yml"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: rust-native-tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux-native-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Install Tauri Linux build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential curl wget file libxdo-dev libssl-dev \
+            librsvg2-dev libayatana-appindicator3-dev libwebkit2gtk-4.1-dev
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+      - name: Run native Rust unit and process-lifecycle tests
+        run: cargo test --manifest-path src-tauri/Cargo.toml
