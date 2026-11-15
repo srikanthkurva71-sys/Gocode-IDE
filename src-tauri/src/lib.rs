@@ -1,7 +1,8 @@
 mod extension_policy;
 mod lsp_protocol;
 mod task_runner;
-mod workspace_io;\nmod git_hunks;
+mod workspace_io;
+mod git_hunks;
 
 use task_runner::{resolve_project_task, run_bounded_command, run_bounded_command_controlled, TaskResult};
 use workspace_io::{atomic_write_file, verify_expected_contents};
