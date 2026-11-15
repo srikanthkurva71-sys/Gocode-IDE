@@ -859,7 +859,7 @@ export default function App() {
     try {
       const result = await invoke<TaskResult>("run_source_file", { path: fileName });
       setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
-      setMessage(result.success ? "Run completed for " + fileName : "Run failed for " + fileName);
+      setMessage(result.timed_out ? "Run timed out for " + fileName : result.success ? "Run completed for " + fileName : "Run failed for " + fileName);
     } catch (error) { setTaskOutput("Could not run file: " + String(error)); setMessage("Run File failed to start."); }
     finally { setTaskRunning(false); }
   }
@@ -877,7 +877,7 @@ export default function App() {
     try {
       const result = await invoke<TaskResult>("run_project_task", { task });
       setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
-      setMessage(result.success ? task + " completed." : task + " failed.");
+      setMessage(result.timed_out ? task + " timed out." : result.success ? task + " completed." : task + " failed.");
     } catch (error) {
       setTaskOutput("Could not run task: " + String(error));
       setMessage("Build/run task failed to start.");
