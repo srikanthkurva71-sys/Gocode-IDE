@@ -264,14 +264,14 @@ def read_message():
         line = sys.stdin.buffer.readline()
         if not line:
             return None
-        if line in (b"\\r\\n", b"\\n"):
+        if line in (b"\r\n", b"\n"):
             break
         name, value = line.decode("ascii").split(":", 1)
         headers[name.lower()] = value.strip()
     return json.loads(sys.stdin.buffer.read(int(headers["content-length"])))
 def send(message):
     body = json.dumps(message, separators=(",", ":")).encode("utf-8")
-    sys.stdout.buffer.write(("Content-Length: %d\\r\\n\\r\\n" % len(body)).encode("ascii") + body)
+    sys.stdout.buffer.write(("Content-Length: %d\r\n\r\n" % len(body)).encode("ascii") + body)
     sys.stdout.buffer.flush()
 initialize = read_message()
 assert initialize["type"] == "request" and initialize["command"] == "initialize" and initialize["seq"] == 1
