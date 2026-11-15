@@ -1,7 +1,7 @@
 mod extension_policy;
 mod lsp_protocol;
 mod task_runner;
-mod workspace_io;
+mod workspace_io;\nmod git_hunks;
 
 use task_runner::{resolve_project_task, run_bounded_command, run_bounded_command_controlled, TaskResult};
 use workspace_io::{atomic_write_file, verify_expected_contents};
@@ -337,18 +337,7 @@ fn git_diff(state: State<'_, ProjectState>) -> Result<String, String> {
 fn git_apply_hunk(state: State<'_, ProjectState>, patch: String, action: String) -> Result<String, String> {
     use std::process::Stdio;
 
-    if patch.is_empty() || patch.len() > 1_000_000 || patch.contains('\0')
-        || !patch.starts_with("diff --git ") || !patch.contains("\n@@ ")
-    {
-        return Err("Invalid or oversized Git hunk patch.".into());
-    }
-    let args: &[&str] = match action.as_str() {
-        "stage" => &["apply", "--cached", "--whitespace=nowarn", "-"],
-        "unstage" => &["apply", "--cached", "--reverse", "--whitespace=nowarn", "-"],
-        "discard" => &["apply", "--reverse", "--whitespace=nowarn", "-"],
-        _ => return Err("Unsupported Git hunk action.".into()),
-    };
-    let root = project_root(&state)?;
+    git_hunks::validate_hunk_patch(&patch)?;\n    let args = git_hunks::apply_args(&action)?;\n    let root = project_root(&state)?;
     let mut child = Command::new("git")
         .arg("-C").arg(&root).args(args)
         .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped())
