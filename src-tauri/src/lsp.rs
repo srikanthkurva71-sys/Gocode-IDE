@@ -153,6 +153,8 @@ pub fn lsp_start(
     let stdout = child.stdout.take().ok_or_else(|| "Language server stdout is unavailable.".to_string())?;
 
     let id = format!("lsp-{}", state.next_id.fetch_add(1, Ordering::Relaxed));
+    let child = Arc::new(Mutex::new(child));
+    let reader_child = child.clone();
     let event_app = app.clone();
     let event_id = id.clone();
     thread::spawn(move || {
@@ -161,19 +163,19 @@ pub fn lsp_start(
             match read_lsp_message(&mut reader) {
                 Ok(Some(message)) => {
                     if event_app.emit("lsp-message", LspEvent { session_id: event_id.clone(), message }).is_err() {
+                        if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
                         break;
                     }
                 }
                 Ok(None) => break,
                 Err(error) => {
                     let _ = event_app.emit("lsp-error", json!({"session_id": event_id, "message": error}));
+                    if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
                     break;
                 }
             }
         }
     });
-
-    let child = Arc::new(Mutex::new(child));
     let mut session = LspSession { child: child.clone(), stdin };
     // The frontend sends initialize only after subscribing to session events,
     // preventing fast language servers from replying before listeners exist.
