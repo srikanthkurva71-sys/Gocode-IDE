@@ -1032,6 +1032,7 @@ export default function App() {
       const conflicts: string[] = [];
       const missing: string[] = [];
       for (const [path, item] of Object.entries(recoverySnapshot.files)) {
+        if (cancelled) return;
         try {
           const disk = await invoke<string>("read_project_file", { path });
           if (disk !== item.baseline) conflicts.push(path);
