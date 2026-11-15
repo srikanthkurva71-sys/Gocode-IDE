@@ -105,6 +105,8 @@ pub fn dap_start(app: AppHandle, state: State<'_, DapState>, executable: String,
     let stdin = child.stdin.take().ok_or_else(|| "Debug-adapter stdin is unavailable.".to_string())?;
     let stdout = child.stdout.take().ok_or_else(|| "Debug-adapter stdout is unavailable.".to_string())?;
     let id = format!("dap-{}", state.next_id.fetch_add(1, Ordering::Relaxed));
+    let child = Arc::new(Mutex::new(child));
+    let reader_child = child.clone();
     let event_app = app.clone();
     let event_id = id.clone();
     thread::spawn(move || {
@@ -112,17 +114,20 @@ pub fn dap_start(app: AppHandle, state: State<'_, DapState>, executable: String,
         loop {
             match read_dap_message(&mut reader) {
                 Ok(Some(message)) => {
-                    if event_app.emit("dap-message", DapEvent { session_id: event_id.clone(), message }).is_err() { break; }
+                    if event_app.emit("dap-message", DapEvent { session_id: event_id.clone(), message }).is_err() {
+                        if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
+                        break;
+                    }
                 }
                 Ok(None) => break,
                 Err(error) => {
                     let _ = event_app.emit("dap-error", serde_json::json!({"session_id": event_id, "message": error}));
+                    if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
                     break;
                 }
             }
         }
     });
-    let child = Arc::new(Mutex::new(child));
     let mut session = DapSession { child: child.clone(), stdin };
     // The frontend sends initialize after subscribing to events so an immediate
     // adapter response cannot race ahead of the UI listeners.
