@@ -85,8 +85,10 @@ fn terminate_process_tree(child: &mut Child) {
     {
         // Each task is spawned in its own process group, so grandchildren that
         // inherited stdout/stderr cannot keep the reader threads alive.
-        let process_group = format!("-{}", child.id());
-        let _ = Command::new("kill").args(["-KILL", &process_group]).status();
+        let process_group = -(child.id() as libc::pid_t);
+        // SAFETY: the process group was created for this child immediately before
+        // spawn; sending SIGKILL to its negative PID targets only that task tree.
+        unsafe { libc::kill(process_group, libc::SIGKILL); }
     }
     let _ = child.kill();
 }
