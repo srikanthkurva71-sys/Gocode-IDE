@@ -4,7 +4,7 @@ use std::{
     io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
-    sync::{atomic::{AtomicU64, Ordering}, Mutex},
+    sync::{atomic::{AtomicU64, Ordering}, Arc, Mutex},
     thread,
 };
 
@@ -17,22 +17,24 @@ const MAX_LSP_MESSAGE_BYTES: usize = 8 * 1024 * 1024;
 #[derive(Default)]
 pub struct LspState {
     next_id: AtomicU64,
-    sessions: Mutex<HashMap<String, LspSession>>,
+    sessions: Arc<Mutex<HashMap<String, LspSession>>>,
 }
 
 impl Drop for LspState {
     fn drop(&mut self) {
         if let Ok(sessions) = self.sessions.get_mut() {
-            for (_, mut session) in sessions.drain() {
-                let _ = session.child.kill();
-                let _ = session.child.wait();
+            for (_, session) in sessions.drain() {
+                if let Ok(mut child) = session.child.lock() {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                }
             }
         }
     }
 }
 
 struct LspSession {
-    child: Child,
+    child: Arc<Mutex<Child>>,
     stdin: ChildStdin,
 }
 
@@ -169,14 +171,42 @@ pub fn lsp_start(
                 }
             }
         }
-        let _ = event_app.emit("lsp-exited", json!({"session_id": event_id}));
     });
 
-    let mut session = LspSession { child, stdin };
+    let child = Arc::new(Mutex::new(child));
+    let mut session = LspSession { child: child.clone(), stdin };
     // The frontend sends initialize only after subscribing to session events,
     // preventing fast language servers from replying before listeners exist.
-    state.sessions.lock().map_err(|_| "Language-server state is unavailable.".to_string())?
+    let sessions = state.sessions.clone();
+    sessions.lock().map_err(|_| "Language-server state is unavailable.".to_string())?
         .insert(id.clone(), session);
+    let monitor_child = child;
+    let monitor_sessions = sessions;
+    let monitor_app = app;
+    let monitor_id = id.clone();
+    thread::spawn(move || loop {
+        let status = match monitor_child.lock() {
+            Ok(mut child) => child.try_wait(),
+            Err(_) => {
+                let _ = monitor_app.emit("lsp-error", json!({"session_id": monitor_id, "message": "Language-server process state became unavailable."}));
+                break;
+            }
+        };
+        match status {
+            Ok(Some(_)) => {
+                if let Ok(mut sessions) = monitor_sessions.lock() { sessions.remove(&monitor_id); }
+                let _ = monitor_app.emit("lsp-exited", json!({"session_id": monitor_id}));
+                break;
+            }
+            Ok(None) => thread::sleep(Duration::from_millis(100)),
+            Err(error) => {
+                let _ = monitor_app.emit("lsp-error", json!({"session_id": monitor_id, "message": format!("Cannot monitor language server: {error}")}));
+                if let Ok(mut sessions) = monitor_sessions.lock() { sessions.remove(&monitor_id); }
+                let _ = monitor_app.emit("lsp-exited", json!({"session_id": monitor_id}));
+                break;
+            }
+        }
+    });
     Ok(id)
 }
 
@@ -193,9 +223,11 @@ pub fn lsp_send(state: State<'_, LspState>, session_id: String, message: Value) 
 #[tauri::command]
 pub fn lsp_stop(state: State<'_, LspState>, session_id: String) -> Result<(), String> {
     let mut sessions = state.sessions.lock().map_err(|_| "Language-server state is unavailable.".to_string())?;
-    if let Some(mut session) = sessions.remove(&session_id) {
-        let _ = session.child.kill();
-        let _ = session.child.wait();
+    if let Some(session) = sessions.remove(&session_id) {
+        if let Ok(mut child) = session.child.lock() {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
     }
     Ok(())
 }
