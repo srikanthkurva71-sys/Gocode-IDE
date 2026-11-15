@@ -115,6 +115,8 @@ export default function App() {
   const [dapVariables, setDapVariables] = useState<ReturnType<typeof normalizeDebugVariables>>([]);
   const [dapBreakpoints, setDapBreakpoints] = useState<Record<string, number[]>>({});
   const dapSeq = useRef(2);
+  const dapRequestTimers = useRef<Record<number, number>>({});
+  const dapRequestKinds = useRef<Record<number, string>>({});
   const dapLaunchConfig = useRef<Record<string, unknown>>({});
   const [bottomPanel, setBottomPanel] = useState<"problems" | "terminal">("terminal");
   const [searchTerm, setSearchTerm] = useState("");
@@ -186,10 +188,21 @@ export default function App() {
   async function sendDapRequest(command: string, args: Record<string, unknown> = {}) {
     if (!dapSessionId) return;
     const seq = dapSeq.current++;
+    dapRequestKinds.current[seq] = command;
+    dapRequestTimers.current[seq] = window.setTimeout(() => {
+      delete dapRequestKinds.current[seq];
+      delete dapRequestTimers.current[seq];
+      setMessage("Debug-adapter request timed out: " + command);
+    }, 15000);
     try {
       await invoke("dap_send", { sessionId: dapSessionId, message: { seq, type: "request", command, arguments: args } });
       setDapOutput(current => [...current, `→ ${command} (#${seq})`].slice(-100));
-    } catch (error) { setMessage("DAP request failed: " + String(error)); }
+    } catch (error) {
+      window.clearTimeout(dapRequestTimers.current[seq]);
+      delete dapRequestTimers.current[seq];
+      delete dapRequestKinds.current[seq];
+      setMessage("DAP request failed: " + String(error));
+    }
   }
 
   async function toggleBreakpointAtLine(line: number) {
@@ -230,6 +243,9 @@ export default function App() {
       if (dapSessionId) await invoke("dap_stop", { sessionId: dapSessionId });
       dapLaunchConfig.current = launch;
       dapSeq.current = 2;
+      for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
+      dapRequestTimers.current = {};
+      dapRequestKinds.current = {};
       setDapOutput([]);
       setDapThreads([]);
       setDapFrames([]);
@@ -252,6 +268,9 @@ export default function App() {
     setDapScopes([]);
     setDapVariables([]);
     setDapBreakpoints({});
+    for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
+    dapRequestTimers.current = {};
+    dapRequestKinds.current = {};
     setMessage("Debug adapter stopped.");
   }
 
@@ -267,6 +286,11 @@ export default function App() {
         const message = event.payload.message;
         const kind = String(message.type ?? "message");
         const label = message.event ? String(message.event) : message.command ? String(message.command) : kind;
+        if (kind === "response" && typeof message.request_seq === "number") {
+          window.clearTimeout(dapRequestTimers.current[message.request_seq]);
+          delete dapRequestTimers.current[message.request_seq];
+          delete dapRequestKinds.current[message.request_seq];
+        }
         setDapOutput(current => [...current, `← ${label}: ${JSON.stringify(message).slice(0, 700)}`].slice(-100));
         if (kind === "response" && message.success === false) {
           const responseMessage = typeof message.message === "string" ? message.message : "The adapter rejected the request.";
@@ -335,6 +359,9 @@ export default function App() {
           setDapFrames([]);
           setDapScopes([]);
           setDapVariables([]);
+          for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
+          dapRequestTimers.current = {};
+          dapRequestKinds.current = {};
           setMessage("Debug adapter exited.");
         }
       })
@@ -342,6 +369,12 @@ export default function App() {
       if (!active) { message(); error(); exited(); return; }
       unlistenMessage = message; unlistenError = error; unlistenExit = exited;
       // Subscribe before sending initialize; some adapters respond immediately.
+      dapRequestKinds.current[1] = "initialize";
+      dapRequestTimers.current[1] = window.setTimeout(() => {
+        delete dapRequestKinds.current[1];
+        delete dapRequestTimers.current[1];
+        setMessage("Debug-adapter request timed out: initialize");
+      }, 15000);
       void invoke("dap_send", { sessionId: dapSessionId, message: {
         seq: 1, type: "request", command: "initialize",
         arguments: {
@@ -349,9 +382,20 @@ export default function App() {
           locale: "en", linesStartAt1: true, columnsStartAt1: true, pathFormat: "path",
           supportsVariableType: true, supportsRunInTerminalRequest: false, supportsProgressReporting: true
         }
-      }}).catch(error => setMessage("Could not initialize debug adapter: " + String(error)));
+      }}).catch(error => {
+        window.clearTimeout(dapRequestTimers.current[1]);
+        delete dapRequestTimers.current[1];
+        delete dapRequestKinds.current[1];
+        setMessage("Could not initialize debug adapter: " + String(error));
+      });
     });
-    return () => { active = false; unlistenMessage?.(); unlistenError?.(); unlistenExit?.(); };
+    return () => {
+      active = false;
+      unlistenMessage?.(); unlistenError?.(); unlistenExit?.();
+      for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
+      dapRequestTimers.current = {};
+      dapRequestKinds.current = {};
+    };
   }, [dapSessionId]);
 
   function applyLspCompletion(item: LanguageFeatureItem) {
