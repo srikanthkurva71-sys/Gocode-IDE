@@ -60,3 +60,31 @@ export function normalizeDebugVariables(message: unknown): DebugVariable[] {
     }];
   }).slice(0, 2000);
 }
+
+export type DebugResponse = {
+  requestSeq: number;
+  command: string;
+  success: boolean;
+  message: string | null;
+};
+
+/** Normalize and validate a DAP response before correlating it with a request. */
+export function normalizeDebugResponse(value: unknown): DebugResponse | null {
+  const item = record(value);
+  if (
+    !item ||
+    item.type !== "response" ||
+    !Number.isSafeInteger(item.request_seq) ||
+    (item.request_seq as number) < 1 ||
+    typeof item.command !== "string" ||
+    !item.command.trim() ||
+    typeof item.success !== "boolean"
+  ) return null;
+
+  return {
+    requestSeq: item.request_seq as number,
+    command: item.command,
+    success: item.success,
+    message: typeof item.message === "string" ? item.message.slice(0, 2000) : null,
+  };
+}
