@@ -23,6 +23,7 @@ import { parseGitHunks, type GitHunk } from "./lib/gitHunks";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
 import { TaskEventBuffer, type TaskEvent } from "./lib/taskEventBuffer";
 import { getLspRecoveryDelay, MAX_LSP_RECOVERY_ATTEMPTS } from "./lib/lspRecovery";
+import { createWorkspaceRecoverySnapshot, parseWorkspaceRecoverySnapshot, type WorkspaceRecoverySnapshot } from "./lib/workspaceRecovery";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -36,6 +37,7 @@ const STORAGE_KEY = "gocode-ide-workspace-v1";
 const PROJECT_ROOT_KEY = "gocode-ide-last-project-root-v1";
 const EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";
 const EDITOR_SETTINGS_KEY = "gocode-ide-editor-settings-v1";
+const RECOVERY_STORAGE_KEY = "gocode-ide-project-recovery-v1";
 const welcome = "# Welcome to Gocode IDE\n\nA free, local-first development environment.\n\nThe desktop prototype includes a native project explorer, local Git actions, a terminal, and fixed build-task adapters. Language-server intelligence, DAP debugging, and executable extension hosting are still in development. Browser preview files remain in browser storage; export a workspace backup to keep a copy.";
 function languageForFile(name: string): string {
   const ext = name.split(".").pop()?.toLowerCase();
@@ -66,6 +68,15 @@ function loadWorkspace(): Workspace {
 export default function App() {
   const [panel, setPanel] = useState<Panel>("Explorer");
   const [files, setFiles] = useState<Workspace>(loadWorkspace);
+  const [recoverySnapshot] = useState<WorkspaceRecoverySnapshot | null>(() => {
+    try { return parseWorkspaceRecoverySnapshot(localStorage.getItem(RECOVERY_STORAGE_KEY)); }
+    catch { return null; }
+  });
+  const [recoveryCheckComplete, setRecoveryCheckComplete] = useState(() => {
+    try { return parseWorkspaceRecoverySnapshot(localStorage.getItem(RECOVERY_STORAGE_KEY)) === null; }
+    catch { return true; }
+  });
+  const recoveryCheckStarted = useRef(false);
   const [nativePaths, setNativePaths] = useState<Record<string, string>>({});
   const [savedProjectContents, setSavedProjectContents] = useState<Record<string, string>>({});
   const [projectRoot, setProjectRoot] = useState<string | null>(null);
@@ -982,6 +993,74 @@ export default function App() {
     try { localStorage.setItem(STORAGE_KEY, JSON.stringify(files)); }
     catch { setMessage("Browser storage is full. Download your files for backup."); }
   }, [files]);
+
+  // Persist only unsaved native project buffers locally. Never upload recovery data.
+  useEffect(() => {
+    if (!projectRoot || !isTauri() || !recoveryCheckComplete) return;
+    if (recoverySnapshot && recoverySnapshot.projectRoot !== projectRoot) return;
+    const dirtyFiles: Record<string, { content: string; baseline: string }> = {};
+    for (const name of openTabs) {
+      if (!projectEntries.some(entry => entry.path === name && !entry.is_dir)) continue;
+      const content = files[name];
+      const baseline = savedProjectContents[name];
+      if (typeof content === "string" && typeof baseline === "string" && content !== baseline) {
+        dirtyFiles[name] = { content, baseline };
+      }
+    }
+    const snapshot = createWorkspaceRecoverySnapshot(projectRoot, dirtyFiles);
+    try {
+      if (snapshot) localStorage.setItem(RECOVERY_STORAGE_KEY, JSON.stringify(snapshot));
+      else localStorage.removeItem(RECOVERY_STORAGE_KEY);
+    } catch {
+      setMessage("Could not save the local recovery snapshot. Save your project files manually.");
+    }
+  }, [files, openTabs, projectEntries, projectRoot, savedProjectContents, recoveryCheckComplete, recoverySnapshot]);
+
+  // Recover only into the editor after checking current disk contents. The disk is never
+  // overwritten automatically; a later explicit save still uses the verified disk baseline.
+  useEffect(() => {
+    if (!projectRoot || !isTauri() || !recoverySnapshot ||
+        recoverySnapshot.projectRoot !== projectRoot || recoveryCheckStarted.current ||
+        projectEntries.length === 0) return;
+    recoveryCheckStarted.current = true;
+    void (async () => {
+      const candidates: Array<{ path: string; content: string; disk: string }> = [];
+      const conflicts: string[] = [];
+      const missing: string[] = [];
+      for (const [path, item] of Object.entries(recoverySnapshot.files)) {
+        try {
+          const disk = await invoke<string>("read_project_file", { path });
+          if (disk !== item.baseline) conflicts.push(path);
+          candidates.push({ path, content: item.content, disk });
+        } catch {
+          missing.push(path);
+        }
+      }
+      if (candidates.length) {
+        const details = [
+          "Gocode IDE found " + candidates.length + " unsaved project buffer(s) from the previous session.",
+          conflicts.length ? conflicts.length + " file(s) changed on disk since the recovery snapshot." : "",
+          missing.length ? missing.length + " file(s) are no longer available and will be skipped." : "",
+          "Restore the available buffers into the editor? Nothing will be written to disk automatically."
+        ].filter(Boolean).join("\\n");
+        if (window.confirm(details)) {
+          const recoveredFiles = Object.fromEntries(candidates.map(item => [item.path, item.content]));
+          const currentBaselines = Object.fromEntries(candidates.map(item => [item.path, item.disk]));
+          setFiles(current => ({ ...current, ...recoveredFiles }));
+          setSavedProjectContents(current => ({ ...current, ...currentBaselines }));
+          setOpenTabs(current => [...new Set([...current, ...candidates.map(item => item.path)])]);
+          setFileName(candidates[0].path);
+          setMessage("Recovered " + candidates.length + " unsaved buffer(s). Review changes before saving.");
+        } else {
+          setMessage("Previous-session recovery was dismissed.");
+        }
+      } else {
+        setMessage("A recovery snapshot was found, but none of its files are currently available.");
+      }
+      try { localStorage.removeItem(RECOVERY_STORAGE_KEY); } catch { /* Recovery remains best-effort. */ }
+      setRecoveryCheckComplete(true);
+    })();
+  }, [projectEntries, projectRoot, recoverySnapshot]);
 
   useEffect(() => {
     if (!showTerminal || !isTauri() || !terminalHost.current) return;
