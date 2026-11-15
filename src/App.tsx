@@ -702,6 +702,13 @@ export default function App() {
     }
   }
 
+  useEffect(() => () => {
+    lspRecoveryEnabled.current = false;
+    lspRecoveryGeneration.current += 1;
+    if (lspRetryTimer.current !== null) window.clearTimeout(lspRetryTimer.current);
+    lspRetryTimer.current = null;
+  }, [projectRoot]);
+
   useEffect(() => {
     if (!projectRoot) { setEditorDiagnostics([]); return; }
     const uri = projectFileUri(projectRoot, fileName);
