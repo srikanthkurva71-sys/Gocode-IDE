@@ -4,7 +4,7 @@ mod task_runner;
 mod workspace_io;
 
 use task_runner::{resolve_project_task, run_bounded_command, TaskResult};
-use workspace_io::atomic_write_file;
+use workspace_io::{atomic_write_file, verify_expected_contents};
 
 use std::{
     collections::HashMap,
@@ -278,7 +278,7 @@ fn create_project_directory(state: State<'_, ProjectState>, path: String) -> Res
 }
 
 #[tauri::command]
-fn write_project_file(state: State<'_, ProjectState>, path: String, content: String) -> Result<(), String> {
+fn write_project_file(state: State<'_, ProjectState>, path: String, content: String, expected_content: Option<String>) -> Result<(), String> {
     if content.len() > 2_000_000 {
         return Err("File is larger than the 2 MB editor limit.".into());
     }
@@ -287,6 +287,8 @@ fn write_project_file(state: State<'_, ProjectState>, path: String, content: Str
     let parent = target.parent().ok_or_else(|| "Invalid file path.".to_string())?;
     ensure_safe_parent_directories(&root, parent)?;
 
+    verify_expected_contents(&target, expected_content.as_deref())
+        .map_err(|e| format!("Cannot safely save project file: {e}"))?;
     match fs::symlink_metadata(&target) {
         Ok(meta) => {
             if meta.file_type().is_symlink() {
