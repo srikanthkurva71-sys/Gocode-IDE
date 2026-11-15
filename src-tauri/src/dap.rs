@@ -119,7 +119,12 @@ pub fn dap_start(app: AppHandle, state: State<'_, DapState>, executable: String,
                         break;
                     }
                 }
-                Ok(None) => break,
+                Ok(None) => {
+                    // Do not retain an adapter that has closed its protocol stream
+                    // but left its process running in the background.
+                    if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
+                    break;
+                },
                 Err(error) => {
                     let _ = event_app.emit("dap-error", serde_json::json!({"session_id": event_id, "message": error}));
                     if let Ok(mut child) = reader_child.lock() { let _ = child.kill(); }
