@@ -38,7 +38,8 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Stage 4 — Build, run and task platform
 - [x] Apply the shared bounded process runner to project tasks and Run File for Python, JavaScript, Go, Rust, C and C++.
-- [ ] Consolidate toolchain discovery and task adapter contracts.
+- [x] Detect installed toolchains on PATH and offer only supported fixed adapters for detected project manifests (Node, Python, Go, Rust, CMake, Make, Maven, Gradle, and .NET).
+- [ ] Consolidate toolchain discovery and task adapter contracts into reusable profiles.
 - [ ] Add task profiles for common project types (Node, Python, Go, Rust, C/C++, Java, .NET) based on installed toolchains.
 - [ ] Add task configuration with explicit trust/confirmation and argument-array execution.
 - [x] Add bounded streaming stdout/stderr capture for project tasks.
@@ -87,7 +88,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Current implementation classification
 
-**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, and core DAP event lifecycle handling, manifest review, CI MSI packaging.
+**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, toolchain-aware task discovery for Node, Python, Go, Rust, CMake, Make, Maven, Gradle and .NET, selected task adapters, bounded Run File, asynchronous project tasks and Run Current File with user cancellation, streamed task output and lifecycle progress events, process-tree termination and timeouts, LSP/DAP prototypes, bounded LSP/DAP request timeouts, LSP JSON-RPC cancellation for expired/superseded interactive requests, LSP/DAP child-process monitoring and shutdown cleanup, protocol-reader failure termination, DAP stepping controls, watch-expression evaluation UI, and core DAP event lifecycle handling, manifest review, CI MSI packaging.
 
 **Experimental / incomplete:** LSP/DAP adapter interoperability, debugger completeness, Windows Job Object assignment occurs immediately after process creation (a very small pre-assignment child-spawn race remains), native project buffer recovery/conflict handling, task cancellation covers detected project tasks and Run Current File but not interactive terminal sessions, progress is lifecycle/output based rather than a percentage estimate, real Windows-device validation.
 
