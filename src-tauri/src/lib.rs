@@ -3,7 +3,7 @@ mod lsp_protocol;
 mod task_runner;
 mod workspace_io;
 
-use task_runner::{bounded_output, resolve_project_task, TaskResult};
+use task_runner::{resolve_project_task, run_bounded_command, TaskResult};
 use workspace_io::atomic_write_file;
 
 use std::{
@@ -473,15 +473,14 @@ fn run_project_task(state: State<'_, ProjectState>, task: String) -> Result<Task
     let root = project_root(&state)?;
     let spec = resolve_project_task(&task)
         .ok_or_else(|| "This project task is not supported.".to_string())?;
-    let output = Command::new(spec.program)
-        .args(spec.args)
-        .current_dir(&root)
-        .output()
-        .map_err(|e| format!("Could not start {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
+    let mut command = Command::new(spec.program);
+    command.args(spec.args).current_dir(&root);
+    let (status, output) = run_bounded_command(&mut command, 100_000)
+        .map_err(|e| format!("Could not run {}. Install the toolchain and ensure it is on PATH: {e}", spec.program))?;
     Ok(TaskResult {
         command: spec.label.to_string(),
-        success: output.status.success(),
-        output: bounded_output(&output.stdout, &output.stderr, 100_000),
+        success: status.success(),
+        output,
     })
 }
 
