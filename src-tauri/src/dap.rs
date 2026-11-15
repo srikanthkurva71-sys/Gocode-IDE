@@ -21,7 +21,7 @@ pub struct DapState {
 
 impl Drop for DapState {
     fn drop(&mut self) {
-        if let Ok(sessions) = self.sessions.get_mut() {
+        if let Ok(mut sessions) = self.sessions.lock() {
             for (_, session) in sessions.drain() {
                 if let Ok(mut child) = session.child.lock() {
                     let _ = child.kill();
