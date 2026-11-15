@@ -400,6 +400,111 @@ fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, S
     Ok(tasks)
 }
 
+fn compile_and_run_source_controlled(
+    compiler: &str,
+    source: &Path,
+    project_root: &Path,
+    command_label: String,
+    cancel: Arc<AtomicBool>,
+    on_output: Arc<dyn Fn(String) + Send + Sync>,
+) -> Result<TaskResult, String> {
+    let temp_root = std::env::temp_dir().join(format!(
+        "gocode-run-{}-{}",
+        std::process::id(),
+        std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_nanos()
+    ));
+    fs::create_dir_all(&temp_root).map_err(|e| format!("Could not create temporary build directory: {e}"))?;
+    let executable = temp_root.join(if cfg!(target_os = "windows") { "gocode-run.exe" } else { "gocode-run" });
+
+    let mut compile = Command::new(compiler);
+    compile.arg(source).arg("-o").arg(&executable).current_dir(project_root);
+    let compile_result = run_bounded_command_controlled(
+        &mut compile, 100_000, std::time::Duration::from_secs(300),
+        Arc::clone(&cancel), Arc::clone(&on_output),
+    );
+    let (compile_status, compile_output, compile_timed_out, compile_cancelled) = match compile_result {
+        Ok(result) => result,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&temp_root);
+            return Err(format!("Could not start {compiler}. Install the compiler and ensure it is on PATH: {error}"));
+        }
+    };
+    if compile_timed_out || compile_cancelled || !compile_status.success() {
+        let _ = fs::remove_dir_all(&temp_root);
+        return Ok(TaskResult {
+            command: format!("{compiler} {command_label}"),
+            success: false,
+            output: compile_output,
+            timed_out: compile_timed_out,
+            cancelled: compile_cancelled,
+        });
+    }
+
+    let mut execution = Command::new(&executable);
+    execution.current_dir(project_root);
+    let execution_result = run_bounded_command_controlled(
+        &mut execution, 100_000, std::time::Duration::from_secs(30),
+        cancel, on_output,
+    );
+    let _ = fs::remove_dir_all(&temp_root);
+    let (status, output, timed_out, cancelled) = execution_result
+        .map_err(|e| format!("Could not launch compiled program: {e}"))?;
+    Ok(TaskResult {
+        command: format!("{compiler} {command_label}"),
+        success: status.success() && !timed_out && !cancelled,
+        output,
+        timed_out,
+        cancelled,
+    })
+}
+
+fn execute_source_file_controlled(
+    root: &Path,
+    path: &str,
+    cancel: Arc<AtomicBool>,
+    on_output: Arc<dyn Fn(String) + Send + Sync>,
+) -> Result<TaskResult, String> {
+    let relative = safe_relative_path(root, path)?;
+    let metadata = fs::symlink_metadata(&relative).map_err(|e| format!("Could not inspect source file: {e}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Only regular, non-symlink source files can be run.".into());
+    }
+    let canonical_root = root.canonicalize().map_err(|e| format!("Could not resolve project folder: {e}"))?;
+    let canonical_file = relative.canonicalize().map_err(|e| format!("Could not resolve source file: {e}"))?;
+    if !canonical_file.starts_with(&canonical_root) {
+        return Err("Source file must stay inside the opened project.".into());
+    }
+    let extension = canonical_file.extension().and_then(|x| x.to_str()).unwrap_or("").to_ascii_lowercase();
+    let source = canonical_file.to_string_lossy().into_owned();
+
+    match extension.as_str() {
+        "rs" => compile_and_run_source_controlled("rustc", &canonical_file, &canonical_root, source, cancel, on_output),
+        "c" | "cpp" | "cc" | "cxx" => {
+            let compiler = if extension == "c" { "cc" } else { "c++" };
+            compile_and_run_source_controlled(compiler, &canonical_file, &canonical_root, source, cancel, on_output)
+        }
+        "py" | "js" | "mjs" | "cjs" | "go" => {
+            let (program, args): (&str, Vec<String>) = match extension.as_str() {
+                "py" => ("python", vec![source.clone()]),
+                "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
+                "go" => ("go", vec!["run".into(), source.clone()]),
+                _ => unreachable!(),
+            };
+            let mut command = Command::new(program);
+            command.args(&args).current_dir(&canonical_root);
+            let (status, output, timed_out, cancelled) = run_bounded_command_controlled(
+                &mut command, 100_000, std::time::Duration::from_secs(120), cancel, on_output,
+            ).map_err(|e| format!("Could not start {program}. Install the runtime and ensure it is on PATH: {e}"))?;
+            Ok(TaskResult {
+                command: format!("{program} {}", args.join(" ")),
+                success: status.success() && !timed_out && !cancelled,
+                output, timed_out, cancelled,
+            })
+        }
+        _ => Err("Run File supports Python, JavaScript, Go, Rust, C, and C++ files when their toolchains are installed.".into()),
+    }
+}
+
 fn compile_and_run_source(
     compiler: &str,
     source: &Path,
@@ -551,6 +656,53 @@ fn start_project_task(
                 timed_out: false, cancelled: false,
             },
         };
+        let state = if result.cancelled { "cancelled" }
+            else if result.timed_out { "timed_out" }
+            else if result.success { "completed" }
+            else { "failed" };
+        let _ = app.emit("task-progress", TaskProgressEvent { task_id: task_id.clone(), state: state.to_string() });
+        let _ = app.emit("task-completed", TaskCompletedEvent { task_id: task_id.clone(), result });
+        if let Ok(mut running) = task_registry.lock() { running.remove(&task_id); }
+    });
+    Ok(id)
+}
+
+#[tauri::command]
+fn start_source_file_task(
+    app: AppHandle,
+    project: State<'_, ProjectState>,
+    tasks: State<'_, ProjectTaskState>,
+    path: String,
+) -> Result<String, String> {
+    let root = project_root(&project)?;
+    // Validate the source path before acknowledging the task to the frontend.
+    let relative = safe_relative_path(&root, &path)?;
+    let metadata = fs::symlink_metadata(&relative).map_err(|e| format!("Could not inspect source file: {e}"))?;
+    if metadata.file_type().is_symlink() || !metadata.is_file() {
+        return Err("Only regular, non-symlink source files can be run.".into());
+    }
+    let id = format!("task-{}", tasks.next_id.fetch_add(1, Ordering::Relaxed));
+    let cancel = Arc::new(AtomicBool::new(false));
+    tasks.running.lock().map_err(|_| "Task state is unavailable.".to_string())?
+        .insert(id.clone(), Arc::clone(&cancel));
+    let _ = app.emit("task-progress", TaskProgressEvent { task_id: id.clone(), state: "running".to_string() });
+
+    let task_id = id.clone();
+    let task_registry = Arc::clone(&tasks.running);
+    thread::spawn(move || {
+        let output_app = app.clone();
+        let output_id = task_id.clone();
+        let on_output: Arc<dyn Fn(String) + Send + Sync> = Arc::new(move |data| {
+            let _ = output_app.emit("task-output", TaskOutputEvent { task_id: output_id.clone(), data });
+        });
+        let result = execute_source_file_controlled(&root, &path, cancel, on_output)
+            .unwrap_or_else(|error| TaskResult {
+                command: format!("Run {path}"),
+                success: false,
+                output: error,
+                timed_out: false,
+                cancelled: false,
+            });
         let state = if result.cancelled { "cancelled" }
             else if result.timed_out { "timed_out" }
             else if result.success { "completed" }
@@ -797,6 +949,7 @@ pub fn run() {
             git_push_current_branch,
             detect_project_tasks,
             start_project_task,
+            start_source_file_task,
             cancel_project_task,
             run_source_file
         ])
