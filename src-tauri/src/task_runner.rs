@@ -69,11 +69,95 @@ fn capture_reader(
 }
 
 #[cfg(windows)]
-fn terminate_process_tree(child: &mut Child) {
-    // taskkill /T terminates descendants as well as the directly spawned process.
-    let _ = Command::new("taskkill")
-        .args(["/PID", &child.id().to_string(), "/T", "/F"])
-        .status();
+struct WindowsJob {
+    handle: windows_sys::Win32::Foundation::HANDLE,
+}
+
+#[cfg(windows)]
+impl WindowsJob {
+    fn new() -> io::Result<Self> {
+        use windows_sys::Win32::{
+            Foundation::CloseHandle,
+            System::JobObjects::{
+                CreateJobObjectW, SetInformationJobObject,
+                JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+                JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+                JobObjectExtendedLimitInformation,
+            },
+        };
+
+        // SAFETY: null attributes/name request an unnamed job with the default ACL.
+        let handle = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+        if handle.is_null() {
+            return Err(io::Error::last_os_error());
+        }
+
+        // KILL_ON_JOB_CLOSE makes the job handle an ownership boundary: closing it
+        // terminates every process still associated with this task.
+        let mut limits: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = unsafe { std::mem::zeroed() };
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        // SAFETY: the structure pointer and size match the requested information class.
+        let configured = unsafe {
+            SetInformationJobObject(
+                handle,
+                JobObjectExtendedLimitInformation,
+                (&limits as *const JOBOBJECT_EXTENDED_LIMIT_INFORMATION).cast(),
+                std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+            )
+        };
+        if configured == 0 {
+            let error = io::Error::last_os_error();
+            // SAFETY: handle was returned by CreateJobObjectW and is owned here.
+            unsafe { CloseHandle(handle); }
+            return Err(error);
+        }
+        Ok(Self { handle })
+    }
+
+    fn assign(&self, child: &Child) -> io::Result<()> {
+        use std::os::windows::io::AsRawHandle;
+        use windows_sys::Win32::System::JobObjects::AssignProcessToJobObject;
+
+        // SAFETY: Child owns a live process handle for the duration of this call.
+        let assigned = unsafe {
+            AssignProcessToJobObject(self.handle, child.as_raw_handle() as _)
+        };
+        if assigned == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+
+    fn terminate(&self) -> io::Result<()> {
+        use windows_sys::Win32::System::JobObjects::TerminateJobObject;
+
+        // SAFETY: self.handle is a live job handle owned by this guard.
+        let terminated = unsafe { TerminateJobObject(self.handle, 1) };
+        if terminated == 0 {
+            return Err(io::Error::last_os_error());
+        }
+        Ok(())
+    }
+}
+
+#[cfg(windows)]
+impl Drop for WindowsJob {
+    fn drop(&mut self) {
+        use windows_sys::Win32::Foundation::CloseHandle;
+        // SAFETY: this guard uniquely owns the handle returned by CreateJobObjectW.
+        unsafe { CloseHandle(self.handle); }
+    }
+}
+
+#[cfg(windows)]
+fn terminate_process_tree(child: &mut Child, job: &WindowsJob) {
+    // The Job Object covers the complete assigned process tree. Keep taskkill as a
+    // last-resort fallback if Windows refuses to terminate the job for some reason.
+    if job.terminate().is_err() {
+        let _ = Command::new("taskkill")
+            .args(["/PID", &child.id().to_string(), "/T", "/F"])
+            .status();
+    }
     let _ = child.kill();
 }
 
@@ -106,7 +190,20 @@ pub fn run_bounded_command(
         use std::os::unix::process::CommandExt;
         command.process_group(0);
     }
+    #[cfg(windows)]
+    let process_tree = WindowsJob::new()?;
+
     let mut child = command.spawn()?;
+
+    #[cfg(windows)]
+    if let Err(error) = process_tree.assign(&child) {
+        let _ = child.kill();
+        let _ = child.wait();
+        return Err(io::Error::new(
+            error.kind(),
+            format!("failed to assign task process to its Windows Job Object: {error}"),
+        ));
+    }
     let stdout = child.stdout.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stdout pipe unavailable"))?;
     let stderr = child.stderr.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stderr pipe unavailable"))?;
     let capture = Arc::new(Mutex::new(OutputCapture::default()));
@@ -126,14 +223,26 @@ pub fn run_bounded_command(
                 // command via CommandExt::process_group(0) before spawning it.
                 unsafe { libc::kill(process_group, libc::SIGKILL); }
             }
+            #[cfg(windows)]
+            {
+                // The leader may exit while descendants still hold the pipe handles.
+                // Terminate the assigned job before joining readers.
+                let _ = process_tree.terminate();
+            }
             break (status, false);
         }
         if started.elapsed() >= timeout {
+            #[cfg(windows)]
+            terminate_process_tree(&mut child, &process_tree);
+            #[cfg(not(windows))]
             terminate_process_tree(&mut child);
             break (child.wait()?, true);
         }
         thread::sleep(Duration::from_millis(20));
     };
+
+    #[cfg(windows)]
+    drop(process_tree);
 
     stdout_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stdout reader panicked"))??;
     stderr_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stderr reader panicked"))??;
