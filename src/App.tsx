@@ -13,7 +13,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { validateExtensionManifest } from "./lib/extensionManifest";
 import { parseCommandLineArguments } from "./lib/commandLine";
 import { normalizeDebugResponse, normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
-import { normalizeLspDiagnostics } from "./lib/languageProtocol";
+import { isProjectFileUri, normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverResult, normalizeReferenceLocations, type LanguageFeatureItem, type ReferenceLocation } from "./lib/languageFeatures";
 import { reviewCapabilities } from "./lib/capabilityReview";
 import { createFeedbackIssueUrl, type FeedbackCategory } from "./lib/feedback";
@@ -575,15 +575,21 @@ export default function App() {
         }
         if (message.method === "textDocument/publishDiagnostics") {
           const params = message.params as { uri?: string; diagnostics?: unknown } | undefined;
-          if (params?.uri) {
+          const doc = lspDocumentRef.current;
+          const rootUri = doc.projectRoot ? projectFileUri(doc.projectRoot, "").replace(/\/$/, "") : "";
+          if (params?.uri && isProjectFileUri(params.uri, rootUri)) {
             const markers = normalizeLspDiagnostics(params.diagnostics).map(item => ({
               message: item.message,
               lineNumber: item.lineNumber,
               column: item.column,
               severity: item.severity === "error" ? 8 : item.severity === "warning" ? 4 : item.severity === "hint" ? 1 : 2,
             }));
-            setLspDiagnosticsByUri(current => ({ ...current, [params.uri!]: markers }));
-            const doc = lspDocumentRef.current;
+            setLspDiagnosticsByUri(current => {
+              const next = { ...current, [params.uri!]: markers };
+              const staleUris = Object.keys(next).slice(0, Math.max(0, Object.keys(next).length - 200));
+              for (const staleUri of staleUris) delete next[staleUri];
+              return next;
+            });
             if (doc.projectRoot && params.uri === projectFileUri(doc.projectRoot, doc.fileName)) {
               setEditorDiagnostics(markers);
             }
