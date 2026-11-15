@@ -183,6 +183,12 @@ export default function App() {
     catch (error) { setMessage("Invalid executable arguments: " + String(error)); return; }
     try {
       if (lspSessionId) await invoke("lsp_stop", { sessionId: lspSessionId });
+      for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
+      lspRequestTimers.current = {};
+      lspRequestKinds.current = {};
+      lspLatestRequests.current = {};
+      setLspSessionId(null);
+      setLspReady(false);
       const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
       lspOpenedDocuments.current.clear();
       lspDocumentVersion.current = 1;
@@ -202,6 +208,9 @@ export default function App() {
     dapRequestTimers.current[seq] = window.setTimeout(() => {
       delete dapRequestKinds.current[seq];
       delete dapRequestTimers.current[seq];
+      const watchExpression = dapWatchPending.current[seq];
+      delete dapWatchPending.current[seq];
+      if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: "Evaluation timed out" }));
       setMessage("Debug-adapter request timed out: " + command);
     }, 15000);
     try {
@@ -211,6 +220,9 @@ export default function App() {
       window.clearTimeout(dapRequestTimers.current[seq]);
       delete dapRequestTimers.current[seq];
       delete dapRequestKinds.current[seq];
+      const watchExpression = dapWatchPending.current[seq];
+      delete dapWatchPending.current[seq];
+      if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: "Evaluation request failed" }));
       setMessage("DAP request failed: " + String(error));
     }
   }
@@ -331,12 +343,12 @@ export default function App() {
           delete dapRequestTimers.current[response.requestSeq];
           delete dapRequestKinds.current[response.requestSeq];
           const watchExpression = dapWatchPending.current[response.requestSeq];
-          if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: message.success === true ? String((message.body as { result?: unknown; type?: unknown } | undefined)?.result ?? "(no result)") + (((message.body as { type?: unknown } | undefined)?.type) ? " [" + String((message.body as { type?: unknown }).type) + "]" : "") : "Evaluation failed" }));
           delete dapWatchPending.current[response.requestSeq];
           if (response.command !== expectedCommand) {
             setMessage(`DAP response mismatch: expected ${expectedCommand}, received ${response.command}.`);
             return;
           }
+          if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: message.success === true ? String((message.body as { result?: unknown; type?: unknown } | undefined)?.result ?? "(no result)") + (((message.body as { type?: unknown } | undefined)?.type) ? " [" + String((message.body as { type?: unknown }).type) + "]" : "") : "Evaluation failed" }));
         }
         setDapOutput(current => [...current, `← ${label}: ${JSON.stringify(message).slice(0, 700)}`].slice(-100));
         if (kind === "response" && message.success === false) {
@@ -409,6 +421,8 @@ export default function App() {
           for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
           dapRequestTimers.current = {};
           dapRequestKinds.current = {};
+          dapWatchPending.current = {};
+          setDapWatchValues({});
           setMessage("Debug adapter exited.");
         }
       })
@@ -442,6 +456,7 @@ export default function App() {
       for (const timer of Object.values(dapRequestTimers.current)) window.clearTimeout(timer);
       dapRequestTimers.current = {};
       dapRequestKinds.current = {};
+      dapWatchPending.current = {};
     };
   }, [dapSessionId]);
 
