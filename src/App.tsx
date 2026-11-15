@@ -36,6 +36,14 @@ type GitResult = { available: boolean; output: string; branch: string; dirty: bo
 type TaskResult = { command: string; success: boolean; output: string; timed_out?: boolean; cancelled?: boolean };
 type ExtensionManifest = { id: string; name: string; version: string; publisher: string; license: string; description: string; capabilities: string[] };
 type EditorDiagnostic = { message: string; lineNumber: number; column: number; severity: number };
+
+function isProjectEntryVisible(entry: ProjectEntry, collapsedDirs: Record<string, boolean>): boolean {
+  const parts = entry.path.split("/");
+  for (let index = 1; index < parts.length; index += 1) {
+    if (collapsedDirs[parts.slice(0, index).join("/")]) return false;
+  }
+  return true;
+}
 const STORAGE_KEY = "gocode-ide-workspace-v1";
 const PROJECT_ROOT_KEY = "gocode-ide-last-project-root-v1";
 const EXTENSIONS_KEY = "gocode-ide-extension-manifests-v1";
@@ -198,7 +206,7 @@ export default function App() {
     return filterQuickOpenNames(names, quickOpenQuery, 100);
   }, [files, projectEntries, quickOpenQuery]);
   const lineCount = useMemo(() => text.split("\n").length, [text]);
-  const visibleProjectEntries = useMemo(() => projectEntries.filter(isProjectEntryVisible), [projectEntries, collapsedProjectDirs]);
+  const visibleProjectEntries = useMemo(() => projectEntries.filter(entry => isProjectEntryVisible(entry, collapsedProjectDirs)), [projectEntries, collapsedProjectDirs]);
   const projectTreeWindow = useMemo(() => getVirtualWindow(visibleProjectEntries, projectTreeScrollTop, 480), [visibleProjectEntries, projectTreeScrollTop]);
 
   function projectFileUri(root: string, relative: string): string {
