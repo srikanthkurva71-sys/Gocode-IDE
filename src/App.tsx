@@ -414,6 +414,9 @@ export default function App() {
     catch (error) { setMessage("Language-server stop failed: " + String(error)); }
     setLspSessionId(null);
     setLspReady(false);
+    for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
+    lspRequestTimers.current = {};
+    lspRequestKinds.current = {};
     lspOpenedDocuments.current.clear();
     lspDocumentVersion.current = 1;
     setEditorDiagnostics([]);
@@ -532,6 +535,8 @@ export default function App() {
           for (const timer of Object.values(lspRequestTimers.current)) window.clearTimeout(timer);
           lspRequestTimers.current = {};
           lspRequestKinds.current = {};
+          setLspSessionId(null);
+          lspOpenedDocuments.current.clear();
           setMessage("Language server exited.");
         }
       })
