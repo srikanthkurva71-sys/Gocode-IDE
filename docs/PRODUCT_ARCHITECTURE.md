@@ -319,5 +319,5 @@ A public release requires:
 ### Native workspace save guarantees
 - Native project writes use a same-directory temporary file, flush it to disk, and rename it into place to reduce the chance of partially written files after an interrupted save.
 - The editor supplies the last-read file contents as a baseline. If the file changed or disappeared externally, the native save rejects the stale write rather than silently overwriting the external version.
-- Project task stdout/stderr are drained concurrently into a fixed-size capture buffer. This bounds captured output memory while tasks execute.
+- Project task and Run File stdout/stderr are drained concurrently into a fixed-size capture buffer. This bounds captured output memory while tasks execute. Tasks have wall-clock timeouts; Windows timeout handling uses `taskkill /T /F`, while Unix tasks are started in their own process groups and the group is terminated on timeout.
 - Remaining work: process cancellation/timeouts and Windows process-tree cleanup; Run File and Git output capture still need to use the same bounded runner.
