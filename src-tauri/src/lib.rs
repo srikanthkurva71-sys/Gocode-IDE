@@ -384,8 +384,80 @@ fn git_push_current_branch(state: State<'_, ProjectState>) -> Result<String, Str
     run_git(&root, &["push", "-u", "origin", "HEAD"])
 }
 
+fn executable_on_path(program: &str) -> bool {
+    let Some(path_value) = std::env::var_os("PATH") else { return false; };
+    std::env::split_paths(&path_value).any(|directory| {
+        let candidate = directory.join(program);
+        if executable_file(&candidate) { return true; }
+        #[cfg(windows)]
+        {
+            ["exe", "cmd", "bat", "com"].iter().any(|extension| {
+                executable_file(&directory.join(format!("{program}.{extension}")))
+            })
+        }
+        #[cfg(not(windows))]
+        { false }
+    })
+}
+
+#[cfg(windows)]
+fn executable_file(path: &Path) -> bool { path.is_file() }
+
+#[cfg(unix)]
+fn executable_file(path: &Path) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    fs::metadata(path).map(|metadata| metadata.is_file() && metadata.permissions().mode() & 0o111 != 0).unwrap_or(false)
+}
+
+#[cfg(not(any(windows, unix)))]
+fn executable_file(path: &Path) -> bool { path.is_file() }
+
 #[tauri::command]
 fn detect_project_tasks(state: State<'_, ProjectState>) -> Result<Vec<String>, String> {
+    let root = project_root(&state)?;
+    let mut tasks = Vec::new();
+
+    if executable_on_path("npm") && root.join("package.json").is_file() {
+        let scripts = fs::read_to_string(root.join("package.json")).ok()
+            .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok())
+            .and_then(|value| value.get("scripts").cloned())
+            .and_then(|value| value.as_object().cloned())
+            .unwrap_or_default();
+        if scripts.contains_key("build") { tasks.push("npm run build".to_string()); }
+        if scripts.contains_key("test") { tasks.push("npm test".to_string()); }
+    }
+    if executable_on_path("cargo") && root.join("Cargo.toml").is_file() {
+        tasks.push("cargo build".to_string());
+        tasks.push("cargo test".to_string());
+    }
+    if root.join("pyproject.toml").is_file() || root.join("setup.py").is_file() {
+        if executable_on_path("python") { tasks.push("python -m compileall .".to_string()); }
+        else if executable_on_path("python3") { tasks.push("python3 -m compileall .".to_string()); }
+    }
+    if executable_on_path("make") && root.join("Makefile").is_file() { tasks.push("make".to_string()); }
+    if executable_on_path("go") && root.join("go.mod").is_file() {
+        tasks.push("go build ./...".to_string());
+        tasks.push("go test ./...".to_string());
+    }
+    if executable_on_path("cmake") && root.join("CMakeLists.txt").is_file() {
+        tasks.push("cmake -S . -B build".to_string());
+    }
+    if executable_on_path("mvn") && root.join("pom.xml").is_file() { tasks.push("mvn test".to_string()); }
+    if executable_on_path("gradle") && (root.join("build.gradle").is_file() || root.join("build.gradle.kts").is_file()) {
+        tasks.push("gradle test".to_string());
+    }
+    let has_dotnet_project = fs::read_dir(&root).map(|entries| entries.filter_map(Result::ok).any(|entry| {
+        let name = entry.file_name().to_string_lossy().to_ascii_lowercase();
+        name.ends_with(".sln") || name.ends_with(".slnx") || name.ends_with(".csproj")
+    })).unwrap_or(false);
+    if executable_on_path("dotnet") && has_dotnet_project {
+        tasks.push("dotnet build".to_string());
+        tasks.push("dotnet test".to_string());
+    }
+    Ok(tasks)
+}
+
+
     let root = project_root(&state)?;
     let mut tasks = Vec::new();
     if root.join("package.json").is_file() {

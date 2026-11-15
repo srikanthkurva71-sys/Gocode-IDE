@@ -37,6 +37,11 @@ pub fn resolve_project_task(label: &str) -> Option<TaskSpec> {
         TaskSpec { label: "go build ./...", program: "go", args: &["build", "./..."] },
         TaskSpec { label: "go test ./...", program: "go", args: &["test", "./..."] },
         TaskSpec { label: "cmake -S . -B build", program: "cmake", args: &["-S", ".", "-B", "build"] },
+        TaskSpec { label: "python3 -m compileall .", program: "python3", args: &["-m", "compileall", "."] },
+        TaskSpec { label: "mvn test", program: "mvn", args: &["test"] },
+        TaskSpec { label: "gradle test", program: "gradle", args: &["test"] },
+        TaskSpec { label: "dotnet build", program: "dotnet", args: &["build"] },
+        TaskSpec { label: "dotnet test", program: "dotnet", args: &["test"] },
     ];
     TASKS.iter().copied().find(|task| task.label == label)
 }
@@ -303,6 +308,13 @@ mod tests {
         assert_eq!(task.program, "cargo");
         assert_eq!(task.args, &["test"]);
         assert_eq!(task.label, "cargo test");
+    }
+
+    #[test]
+    fn resolves_additional_fixed_toolchain_tasks() {
+        for label in ["python3 -m compileall .", "mvn test", "gradle test", "dotnet build", "dotnet test"] {
+            assert!(resolve_project_task(label).is_some(), "missing fixed task: {label}");
+        }
     }
 
     #[test]
