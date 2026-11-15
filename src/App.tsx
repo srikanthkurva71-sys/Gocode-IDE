@@ -18,6 +18,7 @@ import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverR
 import { reviewCapabilities } from "./lib/capabilityReview";
 import { createFeedbackIssueUrl, type FeedbackCategory } from "./lib/feedback";
 import { clampEditorFontSize, filterQuickOpenNames, findWorkspaceMatches, formatTaskOutput, isValidRelativeFileName, isWithinTextImportLimit, MAX_WORKSPACE_BACKUP_BYTES, MAX_WORKSPACE_FILES, MAX_WORKSPACE_FILE_CHARS, mergeWorkspaceFiles, sanitizeWorkspaceFiles } from "./lib/workspace";
+import { TaskEventBuffer, type TaskEvent } from "./lib/taskEventBuffer";
 
 type Panel = "Explorer" | "Search" | "Source Control" | "Run & Debug" | "Extensions" | "Settings";
 type Workspace = Record<string, string>;
@@ -77,6 +78,7 @@ export default function App() {
   const [taskRunning, setTaskRunning] = useState(false);
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const taskAcceptEventsRef = useRef(false);
+  const taskEventBufferRef = useRef(new TaskEventBuffer());
   const [extensions, setExtensions] = useState<ExtensionManifest[]>(() => { try { const v = JSON.parse(localStorage.getItem(EXTENSIONS_KEY) || "[]"); return Array.isArray(v) ? v.filter(x => x && typeof x.id === "string" && typeof x.name === "string") : []; } catch { return []; } });
   const [extensionError, setExtensionError] = useState("");
   const [wordWrap, setWordWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").wordWrap === true; } catch { return false; } });
@@ -1018,15 +1020,20 @@ export default function App() {
       return;
     }
     taskAcceptEventsRef.current = true;
+    taskEventBufferRef.current.begin();
     setActiveTaskId(null);
     setTaskRunning(true);
     setTaskOutput("Starting " + task + " …\n");
     try {
       const id = await invoke<string>("start_project_task", { task });
-      if (taskAcceptEventsRef.current) setActiveTaskId(id);
+      if (taskAcceptEventsRef.current) {
+        setActiveTaskId(id);
+        for (const buffered of taskEventBufferRef.current.activate(id)) applyTaskEvent(buffered);
+      }
       setMessage("Running " + task + "…");
     } catch (error) {
       taskAcceptEventsRef.current = false;
+      taskEventBufferRef.current.reset();
       setActiveTaskId(null);
       setTaskRunning(false);
       setTaskOutput("Could not start task: " + String(error));
@@ -1044,37 +1051,44 @@ export default function App() {
     }
   }
 
+  function applyTaskEvent(event: TaskEvent) {
+    if (event.kind === "output") {
+      setTaskOutput(current => (current + event.data).slice(-100_000));
+      return;
+    }
+    if (event.kind === "progress") {
+      const state = event.state;
+      if (state === "running") setMessage("Task is running…");
+      else if (state === "cancelled") setMessage("Task cancelled.");
+      else if (state === "timed_out") setMessage("Task timed out.");
+      else if (state === "completed") setMessage("Task completed.");
+      else if (state === "failed") setMessage("Task failed.");
+      return;
+    }
+    const result = event.result;
+    taskAcceptEventsRef.current = false;
+    taskEventBufferRef.current.finish(event.task_id);
+    setActiveTaskId(null);
+    setTaskRunning(false);
+    setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
+    setMessage(result.cancelled ? result.command + " cancelled."
+      : result.timed_out ? result.command + " timed out."
+      : result.success ? result.command + " completed."
+      : result.command + " failed.");
+  }
+
   useEffect(() => {
     if (!isTauri()) return;
     let active = true;
     let unlisten: Array<() => void> = [];
+    const receiveTaskEvent = (event: TaskEvent) => {
+      if (!taskAcceptEventsRef.current) return;
+      for (const accepted of taskEventBufferRef.current.push(event)) applyTaskEvent(accepted);
+    };
     Promise.all([
-      listen<{ task_id: string; data: string }>("task-output", event => {
-        if (taskAcceptEventsRef.current) {
-          setTaskOutput(current => (current + event.payload.data).slice(-100_000));
-        }
-      }),
-      listen<{ task_id: string; state: string }>("task-progress", event => {
-        if (!taskAcceptEventsRef.current) return;
-        const state = event.payload.state;
-        if (state === "running") setMessage("Task is running…");
-        else if (state === "cancelled") setMessage("Task cancelled.");
-        else if (state === "timed_out") setMessage("Task timed out.");
-        else if (state === "completed") setMessage("Task completed.");
-        else if (state === "failed") setMessage("Task failed.");
-      }),
-      listen<{ task_id: string; result: TaskResult }>("task-completed", event => {
-        if (!taskAcceptEventsRef.current) return;
-        const result = event.payload.result;
-        taskAcceptEventsRef.current = false;
-        setActiveTaskId(null);
-        setTaskRunning(false);
-        setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
-        setMessage(result.cancelled ? result.command + " cancelled."
-          : result.timed_out ? result.command + " timed out."
-          : result.success ? result.command + " completed."
-          : result.command + " failed.");
-      })
+      listen<{ task_id: string; data: string }>("task-output", event => receiveTaskEvent({ kind: "output", task_id: event.payload.task_id, data: event.payload.data })),
+      listen<{ task_id: string; state: string }>("task-progress", event => receiveTaskEvent({ kind: "progress", task_id: event.payload.task_id, state: event.payload.state })),
+      listen<{ task_id: string; result: TaskResult }>("task-completed", event => receiveTaskEvent({ kind: "completed", task_id: event.payload.task_id, result: event.payload.result }))
     ]).then(listeners => {
       if (!active) listeners.forEach(stop => stop());
       else unlisten = listeners;
