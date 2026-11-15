@@ -1002,13 +1002,26 @@ export default function App() {
     if (!window.confirm("Run " + fileName + " from the opened project? This executes project code locally. Continue only if you trust this file.")) {
       setMessage("Run File cancelled."); return;
     }
-    setTaskRunning(true); setTaskOutput("Running " + fileName + " …");
+    taskAcceptEventsRef.current = true;
+    taskEventBufferRef.current.begin();
+    setActiveTaskId(null);
+    setTaskRunning(true);
+    setTaskOutput("Starting " + fileName + " …\n");
     try {
-      const result = await invoke<TaskResult>("run_source_file", { path: fileName });
-      setTaskOutput(formatTaskOutput(result.success, result.command, result.output));
-      setMessage(result.timed_out ? "Run timed out for " + fileName : result.success ? "Run completed for " + fileName : "Run failed for " + fileName);
-    } catch (error) { setTaskOutput("Could not run file: " + String(error)); setMessage("Run File failed to start."); }
-    finally { setTaskRunning(false); }
+      const id = await invoke<string>("start_source_file_task", { path: fileName });
+      if (taskAcceptEventsRef.current) {
+        setActiveTaskId(id);
+        for (const buffered of taskEventBufferRef.current.activate(id)) applyTaskEvent(buffered);
+      }
+      setMessage("Running " + fileName + "…");
+    } catch (error) {
+      taskAcceptEventsRef.current = false;
+      taskEventBufferRef.current.reset();
+      setActiveTaskId(null);
+      setTaskRunning(false);
+      setTaskOutput("Could not run file: " + String(error));
+      setMessage("Run File failed to start.");
+    }
   }
 
   async function runTask(task: string) {
