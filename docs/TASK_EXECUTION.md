@@ -7,7 +7,7 @@ Project tasks are explicit, locally executed build/test commands selected from a
 ## Lifecycle
 
 1. The frontend invokes `start_project_task` with a fixed task label or `start_source_file_task` with a validated project-relative source path.
-2. The backend resolves the label through `resolve_project_task`; unknown labels are rejected.
+2. The backend resolves project-task labels through `resolve_project_task`, or validates that a Run File path is a regular non-symlink file contained by the opened project.
 3. The backend allocates a process-local task ID and cancellation token, registers the task, emits `task-progress: running`, and starts a worker thread.
 4. Stdout and stderr are drained concurrently. Each received chunk is emitted as `task-output`; the combined retained output remains capped at 100,000 bytes.
 5. The worker polls for process exit, cancellation, and the 15-minute wall-clock timeout.
@@ -30,11 +30,10 @@ The UI permits one task at a time (project task or Run Current File), appends li
 - Project task wall-clock timeout is 15 minutes.
 - Unix tasks are placed in a dedicated process group. Windows tasks are assigned to a Job Object configured with kill-on-close.
 - Windows Job Object assignment occurs immediately after spawn; a very small pre-assignment child-spawn race remains documented.
-- Event payloads are scoped by task ID. The frontend currently runs one project task at a time.
+- Event payloads are scoped by task ID. The frontend currently runs one task at a time.
 
 ## Current limitations
 
-- Interactive terminal sessions are separate PTY sessions and are not controlled by the task cancellation token.
 - Interactive terminal sessions are separate PTY sessions and are not controlled by the task cancellation token.
 - Progress is lifecycle and output streaming only. Arbitrary build tools do not expose a reliable shared percentage contract.
 - Cancellation can race with natural process completion; if the process has already exited, the completed result wins.
