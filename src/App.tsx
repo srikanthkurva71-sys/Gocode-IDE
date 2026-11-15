@@ -200,7 +200,7 @@ export default function App() {
       setLspReferences([]);
       setLspOutput([]);
       setLspDiagnosticsByUri({});
-      setEditorDiagnostics({});
+      setEditorDiagnostics([]);
       const rootUri = projectFileUri(projectRoot, "").replace(/\/$/, "");
       lspOpenedDocuments.current.clear();
       lspDocumentVersion.current = 1;
