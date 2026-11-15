@@ -6,6 +6,7 @@ import {
   normalizeDebugThreads,
   normalizeDebugVariables,
 } from "./debugProtocol";
+import { createDapCancelRequest } from "./dapCancellation";
 
 describe("debug protocol response normalization", () => {
   it("normalizes valid threads and ignores malformed entries", () => {
@@ -74,5 +75,23 @@ describe("DAP response validation", () => {
     expect(normalizeDebugResponse({ type: "response", request_seq: Number.MAX_SAFE_INTEGER + 1, command: "launch", success: true })).toBeNull();
     expect(normalizeDebugResponse({ type: "response", request_seq: 1, command: "", success: true })).toBeNull();
     expect(normalizeDebugResponse({ type: "response", request_seq: 1, command: "launch", success: "yes" })).toBeNull();
+  });
+});
+
+describe("DAP cancellation requests", () => {
+  it("builds a cancel request referencing the timed-out request", () => {
+    expect(createDapCancelRequest(12, 7)).toEqual({
+      seq: 12,
+      type: "request",
+      command: "cancel",
+      arguments: { requestId: 7 },
+    });
+  });
+
+  it("rejects invalid, unsafe, or reused sequence identifiers", () => {
+    expect(createDapCancelRequest(0, 7)).toBeNull();
+    expect(createDapCancelRequest(8, -1)).toBeNull();
+    expect(createDapCancelRequest(Number.MAX_SAFE_INTEGER + 1, 7)).toBeNull();
+    expect(createDapCancelRequest(7, 7)).toBeNull();
   });
 });
