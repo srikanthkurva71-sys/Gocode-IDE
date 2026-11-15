@@ -1,6 +1,6 @@
 use std::{
     collections::HashMap,
-    time::{Duration, Instant},
+    time::Duration,
     io::{BufRead, BufReader, Read, Write},
     path::PathBuf,
     process::{Child, ChildStdin, Command, Stdio},
@@ -176,7 +176,7 @@ pub fn lsp_start(
             }
         }
     });
-    let mut session = LspSession { child: child.clone(), stdin };
+    let session = LspSession { child: child.clone(), stdin };
     // The frontend sends initialize only after subscribing to session events,
     // preventing fast language servers from replying before listeners exist.
     let sessions = state.sessions.clone();
