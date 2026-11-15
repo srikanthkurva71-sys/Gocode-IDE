@@ -1,4 +1,10 @@
 use serde::Serialize;
+use std::{
+    io::{self, Read},
+    process::{Command, ExitStatus, Stdio},
+    sync::{Arc, Mutex},
+    thread,
+};
 
 /// Stable result contract shared by run-file and project-task execution.
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
@@ -26,18 +32,50 @@ pub fn resolve_project_task(label: &str) -> Option<TaskSpec> {
         TaskSpec { label: "make", program: "make", args: &[] },
         TaskSpec { label: "go build ./...", program: "go", args: &["build", "./..."] },
         TaskSpec { label: "go test ./...", program: "go", args: &["test", "./..."] },
-        TaskSpec { label: "cmake -S . -B build", program: "cmake", args: &["-S", ".", "-B", "build"] },
-    ];
-    TASKS.iter().copied().find(|task| task.label == label)
+        TaskSpec { label: "cmake -S . -B build", program: #[derive(Default)]
+struct OutputCapture {
+    bytes: Vec<u8>,
+    truncated: bool,
 }
 
-/// Bound captured process output so a noisy build cannot grow IDE memory indefinitely.
-pub fn bounded_output(stdout: &[u8], stderr: &[u8], max_bytes: usize) -> String {
-    let mut output = String::from_utf8_lossy(stdout).into_owned();
-    output.push_str(&String::from_utf8_lossy(stderr));
-    if output.len() > max_bytes {
-        let mut boundary = max_bytes.min(output.len());
-        while !output.is_char_boundary(boundary) { boundary -= 1; }
+fn capture_reader(mut reader: impl Read + Send + 'static, capture: Arc<Mutex<OutputCapture>>, max_bytes: usize) -> thread::JoinHandle<io::Result<()>> {
+    thread::spawn(move || {
+        let mut chunk = [0_u8; 8192];
+        loop {
+            let count = reader.read(&mut chunk)?;
+            if count == 0 { break; }
+            if let Ok(mut output) = capture.lock() {
+                let remaining = max_bytes.saturating_sub(output.bytes.len());
+                let accepted = remaining.min(count);
+                output.bytes.extend_from_slice(&chunk[..accepted]);
+                if accepted < count { output.truncated = true; }
+            }
+            // Keep draining after the display buffer is full so the child cannot
+            // block forever on a full stdout or stderr pipe.
+        }
+        Ok(())
+    })
+}
+
+/// Stream both pipes concurrently into a bounded buffer. Unlike Command::output(),
+/// this prevents a noisy process from allocating its complete output in IDE memory.
+pub fn run_bounded_command(command: &mut Command, max_bytes: usize) -> io::Result<(ExitStatus, String)> {
+    command.stdout(Stdio::piped()).stderr(Stdio::piped());
+    let mut child = command.spawn()?;
+    let stdout = child.stdout.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stdout pipe unavailable"))?;
+    let stderr = child.stderr.take().ok_or_else(|| io::Error::new(io::ErrorKind::Other, "stderr pipe unavailable"))?;
+    let capture = Arc::new(Mutex::new(OutputCapture::default()));
+    let stdout_reader = capture_reader(stdout, Arc::clone(&capture), max_bytes);
+    let stderr_reader = capture_reader(stderr, Arc::clone(&capture), max_bytes);
+    let status = child.wait()?;
+    stdout_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stdout reader panicked"))??;
+    stderr_reader.join().map_err(|_| io::Error::new(io::ErrorKind::Other, "stderr reader panicked"))??;
+    let output = capture.lock().map_err(|_| io::Error::new(io::ErrorKind::Other, "output capture unavailable"))?;
+    let mut text = String::from_utf8_lossy(&output.bytes).into_owned();
+    if output.truncated { text.push_str("\n[Output truncated]"); }
+    Ok((status, text))
+}
+ary -= 1; }
         output.truncate(boundary);
         output.push_str("\n[Output truncated]");
     }
