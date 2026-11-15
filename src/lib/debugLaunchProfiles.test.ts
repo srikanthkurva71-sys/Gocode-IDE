@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { upsertDebugLaunchProfile, validateDebugLaunchProfile } from "./debugLaunchProfiles";
+import { upsertDebugLaunchProfile, validateDebugLaunchProfile, type DebugLaunchProfile } from "./debugLaunchProfiles";
 
 const valid = {
   name: "Node launch",
@@ -48,7 +48,7 @@ describe("debug launch profiles", () => {
   });
 
   it("caps the number of saved profiles", () => {
-    let profiles = [];
+    let profiles: DebugLaunchProfile[] = [];
     for (let index = 0; index < 20; index++) {
       profiles = upsertDebugLaunchProfile(profiles, { ...valid, name: "Profile " + index });
     }
