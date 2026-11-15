@@ -49,6 +49,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 ## Stage 5 — Language intelligence and debugger
 - [ ] Complete LSP request correlation, cancellation, timeout and session restart.
 - [ ] Add mock language-server integration tests and test at least one real server on Windows.
+- [x] Add debugger stepping controls (continue, step over, step into, step out and pause) alongside existing thread, stack-frame, scope and variable views.
 - [ ] Complete DAP state machine, configurationDone, stopped/continued/exited handling, variable/watch UI and launch configurations.
 - [ ] Add mock adapter integration tests and test at least one real debugger adapter on Windows.
 - Acceptance: documented tested server/adapter combinations; no claims beyond those combinations.
@@ -79,7 +80,7 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Current implementation classification
 
-**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, LSP/DAP prototypes, manifest review, CI MSI packaging.
+**Implemented in the current development branch:** workbench/editor, tabs, project explorer, bounded file operations, local Git basics, terminal/PTY, selected task adapters, bounded Run File and project task execution with timeouts, LSP/DAP prototypes, DAP stepping controls, manifest review, CI MSI packaging.
 
 **Experimental / incomplete:** LSP/DAP lifecycle and adapter interoperability, debugger completeness, process cleanup edge cases, native project buffer recovery/conflict handling, full task system, real Windows-device validation.
 
