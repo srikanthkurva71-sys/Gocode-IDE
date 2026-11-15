@@ -257,6 +257,10 @@ export default function App() {
         const kind = String(message.type ?? "message");
         const label = message.event ? String(message.event) : message.command ? String(message.command) : kind;
         setDapOutput(current => [...current, `← ${label}: ${JSON.stringify(message).slice(0, 700)}`].slice(-100));
+        if (kind === "response" && message.success === false) {
+          const responseMessage = typeof message.message === "string" ? message.message : "The adapter rejected the request.";
+          setMessage("DAP " + String(message.command ?? "request") + " failed: " + responseMessage);
+        }
         if (kind === "response" && message.success === true) {
           if (message.command === "threads") setDapThreads(normalizeDebugThreads(message));
           if (message.command === "stackTrace") {
@@ -272,9 +276,36 @@ export default function App() {
           if (message.command === "variables") setDapVariables(normalizeDebugVariables(message));
         }
         if (kind === "event" && message.event === "stopped") {
-          const body = message.body as { threadId?: number } | undefined;
-          if (Number.isInteger(body?.threadId)) setDapThreadId(body!.threadId!);
-          void sendDapRequest("stackTrace", { threadId: Number.isInteger(body?.threadId) ? body!.threadId : dapThreadId });
+          const body = message.body as { threadId?: number; reason?: string; allThreadsStopped?: boolean } | undefined;
+          const stoppedThread = Number.isInteger(body?.threadId) ? body!.threadId! : dapThreadId;
+          setDapThreadId(stoppedThread);
+          setMessage("Debugger stopped" + (body?.reason ? " (" + body.reason + ")" : "") + ".");
+          void sendDapRequest("threads");
+          void sendDapRequest("stackTrace", { threadId: stoppedThread });
+        }
+        if (kind === "event" && message.event === "continued") {
+          setDapFrames([]);
+          setDapScopes([]);
+          setDapVariables([]);
+          setMessage("Debuggee continued.");
+        }
+        if (kind === "event" && message.event === "thread") {
+          void sendDapRequest("threads");
+        }
+        if (kind === "event" && message.event === "output") {
+          const body = message.body as { category?: string; output?: string } | undefined;
+          if (typeof body?.output === "string" && body.output.length) {
+            setDapOutput(current => [...current, (body.category ? "[" + body.category + "] " : "") + body.output!.slice(0, 4000)].slice(-100));
+          }
+        }
+        if (kind === "event" && message.event === "breakpoint") {
+          setMessage("Debugger breakpoint state changed.");
+        }
+        if (kind === "event" && (message.event === "terminated" || message.event === "exited")) {
+          setDapFrames([]);
+          setDapScopes([]);
+          setDapVariables([]);
+          setMessage(message.event === "terminated" ? "Debug session terminated." : "Debuggee exited.");
         }
         if (kind === "response" && message.command === "initialize" && message.success === true) {
           await sendDapRequest("launch", dapLaunchConfig.current);
