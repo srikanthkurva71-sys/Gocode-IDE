@@ -13,6 +13,7 @@ import { readTextFile, writeTextFile } from "@tauri-apps/plugin-fs";
 import { validateExtensionManifest } from "./lib/extensionManifest";
 import { parseCommandLineArguments } from "./lib/commandLine";
 import { normalizeDebugResponse, normalizeDebugScopes, normalizeDebugStackFrames, normalizeDebugThreads, normalizeDebugVariables } from "./lib/debugProtocol";
+import { createDapCancelRequest } from "./lib/dapCancellation";
 import { isProjectFileUri, normalizeLspDiagnostics } from "./lib/languageProtocol";
 import { normalizeCompletionResult, normalizeDefinitionLocation, normalizeHoverResult, normalizeReferenceLocations, type LanguageFeatureItem, type ReferenceLocation } from "./lib/languageFeatures";
 import { reviewCapabilities } from "./lib/capabilityReview";
@@ -206,12 +207,35 @@ export default function App() {
     dapRequestKinds.current[seq] = command;
     if (command === "evaluate" && typeof args.expression === "string") dapWatchPending.current[seq] = args.expression;
     dapRequestTimers.current[seq] = window.setTimeout(() => {
+      const timedOutCommand = dapRequestKinds.current[seq];
       delete dapRequestKinds.current[seq];
       delete dapRequestTimers.current[seq];
       const watchExpression = dapWatchPending.current[seq];
       delete dapWatchPending.current[seq];
       if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: "Evaluation timed out" }));
       setMessage("Debug-adapter request timed out: " + command);
+
+      // DAP cancellation is best-effort: adapters may not support it, but a
+      // supported adapter can stop expensive requests after the UI times out.
+      if (timedOutCommand && timedOutCommand !== "cancel" && dapSessionId) {
+        const cancelSeq = dapSeq.current++;
+        const cancelRequest = createDapCancelRequest(cancelSeq, seq);
+        if (cancelRequest) {
+          dapRequestKinds.current[cancelSeq] = "cancel";
+          dapRequestTimers.current[cancelSeq] = window.setTimeout(() => {
+            delete dapRequestKinds.current[cancelSeq];
+            delete dapRequestTimers.current[cancelSeq];
+          }, 5000);
+          void invoke("dap_send", { sessionId: dapSessionId, message: cancelRequest })
+            .then(() => setDapOutput(current => [...current, `→ cancel (#${cancelSeq}) for ${timedOutCommand} (#${seq})`].slice(-100)))
+            .catch(error => {
+              window.clearTimeout(dapRequestTimers.current[cancelSeq]);
+              delete dapRequestTimers.current[cancelSeq];
+              delete dapRequestKinds.current[cancelSeq];
+              setDapOutput(current => [...current, `DAP cancellation request could not be sent: ${String(error)}`].slice(-100));
+            });
+        }
+      }
     }, 15000);
     try {
       await invoke("dap_send", { sessionId: dapSessionId, message: { seq, type: "request", command, arguments: args } });
