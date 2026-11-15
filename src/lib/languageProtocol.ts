@@ -124,3 +124,10 @@ export function normalizeLspDiagnostics(value: unknown): EditorMarker[] {
   }
   return markers;
 }
+
+/** Accept diagnostics only for file URIs beneath the currently opened project root. */
+export function isProjectFileUri(uri: unknown, projectRootUri: string): uri is string {
+  if (typeof uri !== "string" || uri.length > 8192) return false;
+  const root = projectRootUri.replace(/\\/$/, "");
+  return root.length > 0 && uri.startsWith(root + "/");
+}
