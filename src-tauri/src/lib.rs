@@ -1,8 +1,10 @@
 mod extension_policy;
 mod lsp_protocol;
 mod task_runner;
+mod workspace_io;
 
 use task_runner::{bounded_output, resolve_project_task, TaskResult};
+use workspace_io::atomic_write_file;
 
 use std::{
     collections::HashMap,
@@ -301,7 +303,7 @@ fn write_project_file(state: State<'_, ProjectState>, path: String, content: Str
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {}
         Err(error) => return Err(format!("Cannot inspect target file: {error}")),
     }
-    fs::write(target, content).map_err(|e| format!("Cannot save project file: {e}"))
+    atomic_write_file(&target, content.as_bytes()).map_err(|e| format!("Cannot save project file atomically: {e}"))
 }
 
 fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
