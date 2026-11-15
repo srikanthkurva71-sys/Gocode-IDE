@@ -1088,7 +1088,7 @@ pub fn run() {
 
 #[cfg(test)]
 mod project_path_tests {
-    use super::{ensure_project_search_current, ensure_safe_parent_directories, normalize_search_query, safe_relative_path};
+    use super::{ensure_safe_parent_directories, normalize_search_query, safe_relative_path};
     use std::path::Path;
 
     #[test]
@@ -1154,7 +1154,7 @@ mod project_path_tests {
             &generation,
             1,
         );
-        assert_eq!(result.unwrap_err(), "Project search cancelled.");
+        assert!(matches!(result, Err(error) if error == "Project search cancelled."));
     }
 
     #[test]
