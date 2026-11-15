@@ -314,3 +314,10 @@ A public release requires:
 - Feedback submission occurs in the user's browser after review and authentication. The application must not embed a GitHub token or silently create issues.
 - Website deployment, signed desktop releases and Store submission are separate release pipelines with explicit approvals.
 - See [Publishing and Feedback Architecture](PUBLISHING_AND_FEEDBACK_ARCHITECTURE.md) for the operational workflow and acceptance criteria.
+
+
+### Native workspace save guarantees
+- Native project writes use a same-directory temporary file, flush it to disk, and rename it into place to reduce the chance of partially written files after an interrupted save.
+- The editor supplies the last-read file contents as a baseline. If the file changed or disappeared externally, the native save rejects the stale write rather than silently overwriting the external version.
+- Project task stdout/stderr are drained concurrently into a fixed-size capture buffer. This bounds captured output memory while tasks execute.
+- Remaining work: process cancellation/timeouts and Windows process-tree cleanup; Run File and Git output capture still need to use the same bounded runner.
