@@ -312,6 +312,56 @@ mod tests {
     }
 
     #[test]
+    fn rejects_windows_unsafe_and_unicode_archive_paths_before_extraction() {
+        for path in [
+            "CONIN$", "CONOUT$", "bad<name>.txt", "bad>name.txt",
+            "bad|name.txt", "bad?name.txt", "bad*name.txt",
+            "bad\"name.txt", "café.txt",
+        ] {
+            let bytes = package_zip(&[
+                (MANIFEST_FILE_NAME, valid_manifest()),
+                (path, b"must not be extracted"),
+            ]);
+            assert!(stage_bytes(&bytes).is_err(), "accepted unsafe archive path: {path}");
+        }
+    }
+
+    #[test]
+    fn rejects_case_colliding_archive_names_before_extraction() {
+        let bytes = package_zip(&[
+            (MANIFEST_FILE_NAME, valid_manifest()),
+            ("assets/icon.png", b"first"),
+            ("ASSETS/ICON.PNG", b"second"),
+        ]);
+        assert!(stage_bytes(&bytes).is_err());
+    }
+
+    #[test]
+    fn rejects_manifest_identifiers_and_capabilities_outside_the_schema() {
+        let invalid_id = br#"{"id":"../escape","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid_id)]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("manifest id"));
+
+        let invalid_capability = br#"{"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D","capabilities":["editor.*"]}"#;
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid_capability)]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("invalid capability"));
+    }
+
+    #[test]
+    fn rejects_manifest_control_characters_and_excessive_capability_count() {
+        let control = br#"{"id":"sample.extension","name":"Sample\\nName","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, control)]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("empty or invalid"));
+
+        let capabilities = (0..33).map(|i| format!("\"capability{i}\"")).collect::<Vec<_>>().join(",");
+        let manifest = format!(
+            "{{\"id\":\"sample.extension\",\"name\":\"Sample\",\"version\":\"1.0.0\",\"publisher\":\"P\",\"license\":\"MIT\",\"description\":\"D\",\"capabilities\":[{capabilities}]}}"
+        );
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, manifest.as_bytes())]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("more than 32"));
+    }
+
+    #[test]
     fn rejects_non_zip_and_oversized_compressed_input() {
         assert!(stage_bytes(b"not a zip archive").is_err());
         let temp = tempfile::NamedTempFile::new().unwrap();
