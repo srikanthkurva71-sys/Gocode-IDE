@@ -39,6 +39,8 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - name: Verify Python test runtime
+        run: python --version
       - name: Generate Windows application icon
         run: python scripts/generate_icon.py
       - name: Install frontend dependencies
