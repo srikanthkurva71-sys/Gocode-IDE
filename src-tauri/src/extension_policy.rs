@@ -42,7 +42,7 @@ impl ExtensionCapability {
         }
     }
 
-    /// Permissions with broad or external effects need a prominent consent warning.
+    /// Permissions that require high-visibility user consent.
     pub fn is_sensitive(self) -> bool {
         // Reading source/workspace data, editing user content, registering commands,
         // or crossing the process/network boundary all require explicit high-visibility
@@ -138,7 +138,6 @@ mod tests {
         assert_eq!(decisions.len(), 1);
         assert_eq!(decisions[0].identifier, "workspace.read");
     }
-
 
     #[test]
     fn only_diagnostics_publish_is_non_sensitive() {

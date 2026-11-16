@@ -27,6 +27,12 @@ describe("reviewDeclaredCapability", () => {
     }
   });
 
+  it("treats JavaScript object prototype keys as unknown capabilities", () => {
+    for (const value of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
+      expect(reviewDeclaredCapability(value).risk).toBe("unknown");
+    }
+  });
+
   it("preserves declaration order for review", () => {
     expect(reviewCapabilities(["workspace.read", "network.request"]).map(item => item.risk)).toEqual(["medium", "high"]);
   });

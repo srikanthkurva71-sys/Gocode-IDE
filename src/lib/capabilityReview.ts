@@ -42,7 +42,9 @@ const KNOWN_CAPABILITIES: Record<string, Omit<CapabilityReview, "capability">> =
 
 export function reviewDeclaredCapability(value: string): CapabilityReview {
   const capability = value.trim();
-  const known = KNOWN_CAPABILITIES[capability];
+  const known = Object.prototype.hasOwnProperty.call(KNOWN_CAPABILITIES, capability)
+    ? KNOWN_CAPABILITIES[capability]
+    : undefined;
   if (!known) {
     return {
       capability: value,
