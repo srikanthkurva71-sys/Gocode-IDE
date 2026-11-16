@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { loadDebugLaunchProfiles, upsertDebugLaunchProfile, validateDebugLaunchProfile, type DebugLaunchProfile } from "./debugLaunchProfiles";
+import { loadDebugLaunchProfiles, upsertDebugLaunchProfile, validateDebugLaunchProfile, validatePersistableDebugLaunchProfile, type DebugLaunchProfile } from "./debugLaunchProfiles";
 
 const valid = {
   name: "Node launch",
