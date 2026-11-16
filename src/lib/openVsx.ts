@@ -21,7 +21,7 @@ const MAX_RESPONSE_BYTES = 1024 * 1024;
 
 export async function readBoundedOpenVsxJson(response: Response): Promise<unknown> {
   const declaredLength = response.headers.get("content-length");
-  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > MAX_RESPONSE_BYTES) {
+  if (declaredLength && /^\d+$/.test(declaredLength) && Number(declaredLength) > MAX_RESPONSE_BYTES) {
     throw new Error("Open VSX response exceeds the 1 MiB size limit.");
   }
 
