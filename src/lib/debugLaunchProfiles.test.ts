@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { upsertDebugLaunchProfile, validateDebugLaunchProfile, type DebugLaunchProfile } from "./debugLaunchProfiles";
+import { loadDebugLaunchProfiles, upsertDebugLaunchProfile, validateDebugLaunchProfile, type DebugLaunchProfile } from "./debugLaunchProfiles";
 
 const valid = {
   name: "Node launch",
@@ -45,6 +45,41 @@ describe("debug launch profiles", () => {
     expect(() => validateDebugLaunchProfile({ ...valid, configuration: { values: Array(201).fill(1) } })).toThrow(/200 entries/);
     expect(() => validateDebugLaunchProfile({ ...valid, configuration: { value: "x".repeat(8192) } })).not.toThrow();
     expect(() => validateDebugLaunchProfile({ ...valid, configuration: { value: "x".repeat(8193) } })).toThrow(/8192 characters/);
+  });
+
+
+  it("persists credential-free profiles and reloads them across app sessions", () => {
+    const profiles = upsertDebugLaunchProfile([], valid);
+    expect(loadDebugLaunchProfiles(JSON.stringify(profiles))).toEqual(profiles);
+    expect(loadDebugLaunchProfiles("not-json")).toEqual([]);
+    expect(loadDebugLaunchProfiles(JSON.stringify({ ...valid }))).toEqual([]);
+  });
+
+  it("rejects credential-like adapter arguments and nested configuration fields from persistence", () => {
+    expect(() => validatePersistableDebugLaunchProfile({ ...valid, adapterArgs: ["--api-key=abc"] })).toThrow(/cannot be saved/);
+    expect(() => validatePersistableDebugLaunchProfile({
+      ...valid,
+      configuration: { launch: { env: { ACCESS_TOKEN: "abc" } } },
+    })).toThrow(/credential-like field/);
+    expect(() => validatePersistableDebugLaunchProfile({
+      ...valid,
+      configuration: { headers: { Authorization: "Bearer abc" } },
+    })).toThrow(/credential-like field/);
+    expect(() => validateDebugLaunchProfile({
+      ...valid,
+      configuration: { env: { ACCESS_TOKEN: "session-only" } },
+    })).not.toThrow();
+  });
+
+  it("ignores unsafe and duplicate persisted entries while keeping valid profiles", () => {
+    const raw = JSON.stringify([
+      valid,
+      { ...valid, name: "node launch" },
+      { ...valid, name: "Secret profile", configuration: { token: "abc" } },
+      { ...valid, name: "Relative data", configuration: { password: "abc" } },
+    ]);
+    expect(loadDebugLaunchProfiles(raw)).toEqual([validateDebugLaunchProfile(valid)]);
+    expect(loadDebugLaunchProfiles("x".repeat(64 * 1024 * 21))).toEqual([]);
   });
 
   it("caps the number of saved profiles", () => {

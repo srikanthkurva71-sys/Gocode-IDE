@@ -8,6 +8,8 @@ export type DebugLaunchProfile = {
 
 const MAX_PROFILES = 20;
 const MAX_CONFIG_BYTES = 64 * 1024;
+const MAX_STORED_PROFILES_BYTES = MAX_CONFIG_BYTES * MAX_PROFILES;
+const SECRET_FIELD_PATTERN = /(?:token|password|passwd|secret|api[-_]?key|client[-_]?secret|credential|authorization|auth[-_]?token|private[-_]?key|certificate)/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -66,11 +68,54 @@ export function validateDebugLaunchProfile(value: unknown): DebugLaunchProfile {
   return { name, executable, adapterArgs: [...adapterArgs], request, configuration: safeConfiguration };
 }
 
+function hasSecretLikeConfigurationField(value: unknown, depth = 0): boolean {
+  if (depth > 8 || value === null || typeof value !== "object") return false;
+  if (Array.isArray(value)) return value.some(item => hasSecretLikeConfigurationField(item, depth + 1));
+  return Object.entries(value as Record<string, unknown>).some(([key, item]) =>
+    SECRET_FIELD_PATTERN.test(key) || hasSecretLikeConfigurationField(item, depth + 1)
+  );
+}
+
+export function validatePersistableDebugLaunchProfile(value: unknown): DebugLaunchProfile {
+  const profile = validateDebugLaunchProfile(value);
+  if (profile.adapterArgs.some(argument => SECRET_FIELD_PATTERN.test(argument))) {
+    throw new Error("Adapter arguments appear to contain credentials. This profile can be used for this session but cannot be saved.");
+  }
+  if (hasSecretLikeConfigurationField(profile.configuration)) {
+    throw new Error("Adapter configuration contains a credential-like field. This profile can be used for this session but cannot be saved.");
+  }
+  return profile;
+}
+
+export function loadDebugLaunchProfiles(raw: string | null): DebugLaunchProfile[] {
+  if (!raw || raw.length > MAX_STORED_PROFILES_BYTES) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    const profiles: DebugLaunchProfile[] = [];
+    const seen = new Set<string>();
+    for (const item of parsed.slice(0, MAX_PROFILES)) {
+      try {
+        const profile = validatePersistableDebugLaunchProfile(item);
+        const key = profile.name.toLocaleLowerCase();
+        if (seen.has(key)) continue;
+        seen.add(key);
+        profiles.push(profile);
+      } catch {
+        // Ignore invalid legacy entries without making the settings store unusable.
+      }
+    }
+    return profiles;
+  } catch {
+    return [];
+  }
+}
+
 export function upsertDebugLaunchProfile(
   profiles: DebugLaunchProfile[],
   candidate: unknown,
 ): DebugLaunchProfile[] {
-  const profile = validateDebugLaunchProfile(candidate);
+  const profile = validatePersistableDebugLaunchProfile(candidate);
   const key = profile.name.toLocaleLowerCase();
   const existing = profiles.filter(item => item.name.toLocaleLowerCase() !== key);
   if (existing.length >= MAX_PROFILES) throw new Error("A maximum of 20 launch profiles is supported.");
