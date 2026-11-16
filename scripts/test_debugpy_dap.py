@@ -140,7 +140,7 @@ def main():
     except ImportError:
         fail("debugpy is not installed; install the pinned CI dependency")
 
-    print(f"debugpy {debugpy.__version__}")
+    print(f"debugpy {debugpy.__version__}", flush=True)
     with tempfile.TemporaryDirectory(prefix="gocode-debugpy-") as directory:
         root = Path(directory)
         program = root / "debug_target.py"
@@ -171,7 +171,7 @@ def main():
             capabilities = initialized.get("body", {})
             if not isinstance(capabilities, dict):
                 fail("initialize response did not include adapter capabilities")
-            print("initialize: passed")
+            print("initialize: passed", flush=True)
 
             launch_seq = client.begin_request("launch", {
                 "noDebug": False,
@@ -190,7 +190,7 @@ def main():
             stopped = client.wait_event("stopped", timeout=60)
             if stopped.get("body", {}).get("reason") not in ("entry", "breakpoint", "pause"):
                 fail(f"unexpected stop reason: {stopped.get('body', {})}")
-            print("launch/configuration stop: passed")
+            print("launch/configuration stop: passed", flush=True)
 
             threads = client.request("threads", {}, timeout=30).get("body", {}).get("threads", [])
             if not threads:
@@ -198,7 +198,7 @@ def main():
             thread_id = threads[0].get("id")
             if not isinstance(thread_id, int):
                 fail("debug adapter returned an invalid thread ID")
-            print("threads: passed")
+            print("threads: passed", flush=True)
 
             frames = client.request("stackTrace", {
                 "threadId": thread_id,
@@ -210,17 +210,17 @@ def main():
             frame_id = frames[0].get("id")
             if not isinstance(frame_id, int):
                 fail("debug adapter returned an invalid stack-frame ID")
-            print("stackTrace: passed")
+            print("stackTrace: passed", flush=True)
 
             scopes = client.request("scopes", {"frameId": frame_id}, timeout=30)
             scope_list = scopes.get("body", {}).get("scopes", [])
             if not isinstance(scope_list, list):
                 fail("debug adapter returned malformed scopes")
-            print("scopes: passed")
+            print("scopes: passed", flush=True)
 
             client.request("continue", {"threadId": thread_id}, timeout=30)
             client.wait_event("terminated", timeout=60)
-            print("continue/terminated: passed")
+            print("continue/terminated: passed", flush=True)
 
             client.request("disconnect", {"restart": False, "terminateDebuggee": True}, timeout=30)
             process.stdin.close()
@@ -232,8 +232,8 @@ def main():
                 fail("debugpy adapter did not exit after disconnect")
             if exit_code != 0:
                 fail(f"debugpy adapter exited with code {exit_code}")
-            print("disconnect: passed")
-            print("real debugpy DAP interoperability smoke test passed")
+            print("disconnect: passed", flush=True)
+            print("real debugpy DAP interoperability smoke test passed", flush=True)
         finally:
             if process.poll() is None:
                 process.kill()
