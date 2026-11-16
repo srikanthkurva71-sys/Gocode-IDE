@@ -76,16 +76,18 @@ class DapClient:
         )
         self.thread.start()
 
-    def request(self, command, arguments=None, timeout=45):
+    def begin_request(self, command, arguments=None):
         request_seq = self.seq
         self.seq += 1
-        message = {
+        send(self.process.stdin, {
             "seq": request_seq,
             "type": "request",
             "command": command,
             "arguments": arguments or {},
-        }
-        send(self.process.stdin, message)
+        })
+        return request_seq
+
+    def wait_response(self, request_seq, command, timeout=45):
         deadline = time.monotonic() + timeout
         deferred = []
         try:
@@ -105,6 +107,10 @@ class DapClient:
         finally:
             for item in deferred:
                 self.messages.put(item)
+
+    def request(self, command, arguments=None, timeout=45):
+        request_seq = self.begin_request(command, arguments)
+        return self.wait_response(request_seq, command, timeout)
 
     def wait_event(self, name, timeout=45):
         deadline = time.monotonic() + timeout
@@ -167,7 +173,7 @@ def main():
                 fail("initialize response did not include adapter capabilities")
             print("initialize: passed")
 
-            client.request("launch", {
+            launch_seq = client.begin_request("launch", {
                 "noDebug": False,
                 "program": str(program),
                 "cwd": str(root),
@@ -175,9 +181,12 @@ def main():
                 "stopOnEntry": True,
                 "justMyCode": False,
                 "redirectOutput": True,
-            }, timeout=60)
+            })
+            # DAP launch may not respond until the client handles the
+            # initialized event and sends configurationDone.
             client.wait_event("initialized", timeout=60)
             client.request("configurationDone", {}, timeout=30)
+            client.wait_response(launch_seq, "launch", timeout=60)
             stopped = client.wait_event("stopped", timeout=60)
             if stopped.get("body", {}).get("reason") not in ("entry", "breakpoint", "pause"):
                 fail(f"unexpected stop reason: {stopped.get('body', {})}")
