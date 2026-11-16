@@ -220,12 +220,19 @@ def main():
 
             client.request("continue", {"threadId": thread_id}, timeout=30)
             client.wait_event("terminated", timeout=60)
-            print("continue/terminated: passed", flush=True)
+            # The terminated event closes the DAP session; wait for the
+            # debuggee's exited event too so Windows releases its working
+            # directory before TemporaryDirectory cleanup.
+            client.wait_event("exited", timeout=30)
+            print("continue/exited/terminated: passed", flush=True)
 
             client.request("disconnect", {"restart": False, "terminateDebuggee": True}, timeout=30)
             process.stdin.close()
             try:
                 exit_code = process.wait(timeout=20)
+                client.thread.join(timeout=2)
+                if client.thread.is_alive():
+                    fail("DAP output reader did not stop after adapter exit")
             except subprocess.TimeoutExpired:
                 process.kill()
                 process.wait()
