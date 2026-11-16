@@ -12,7 +12,7 @@ const REQUIRED_TEXT_FIELDS = ["id", "name", "version", "publisher", "license", "
 const ALLOWED_FIELDS = new Set<string>([...REQUIRED_TEXT_FIELDS, "capabilities"]);
 const MAX_FIELD_LENGTH = 500;
 const MAX_CAPABILITIES = 32;
-const SEMVER_PATTERN = /^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9]\\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*))?$/;
+const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const CAPABILITY_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
 
 export function validateExtensionManifest(value: unknown): ExtensionManifestReview {
@@ -59,9 +59,6 @@ export function validateExtensionManifest(value: unknown): ExtensionManifestRevi
     throw new Error("Capabilities must be at most 32 valid lowercase capability identifiers.");
   }
   const capabilities = [...new Set((rawCapabilities as string[]).map(item => item.trim()))];
-  if (capabilities.length !== rawCapabilities.length) {
-    throw new Error("Capability identifiers must not contain duplicates.");
-  }
 
   return {
     id,
