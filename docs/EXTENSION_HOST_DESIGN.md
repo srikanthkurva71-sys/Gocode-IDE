@@ -39,7 +39,7 @@ Unknown identifiers, wildcard permissions, and broad legacy labels are denied. G
 
 ## Current code
 
-`src-tauri/src/extension_policy.rs` provides a pure Rust, default-deny permission vocabulary and decision evaluator. It is not yet connected to a process host or Tauri command. Unit tests cover unknown permission denial, explicit grants, sensitive permission classification, duplicate normalization, and unknown grant rejection.
+`src-tauri/src/extension_policy.rs` provides a pure Rust, default-deny permission vocabulary and decision evaluator. It is not yet connected to a process host or Tauri command. Unit tests cover unknown permission denial, explicit grants, sensitive permission classification, duplicate normalization, and unknown grant rejection.\n\n`src-tauri/src/extension_archive_policy.rs` validates archive-entry metadata supplied by a future ZIP reader. It rejects unsafe/absolute/traversal paths, Windows device names, duplicate and case-colliding paths, symlinks, encrypted members, excessive entry counts, oversized files and total expanded size, excessive compression ratios, and file/directory prefix conflicts. Limits are 2,048 entries, 10 MiB per file, 50 MiB total expanded data, and a 100:1 compression ratio. This is a policy layer only: it does not parse ZIP bytes, extract files, verify package signatures, or install/execute extensions. A future extractor must use a fresh private staging directory and must not follow symlinks.
 
 ## Release gates
 
