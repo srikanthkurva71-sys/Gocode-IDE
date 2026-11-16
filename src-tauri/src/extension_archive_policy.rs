@@ -31,7 +31,7 @@ pub fn validate_archive_path(path: &str, is_directory: bool) -> Result<String, &
     if path.is_empty() || path.len() > 240 || path.trim() != path {
         return Err("Archive entry path is empty, padded, or too long.");
     }
-    if path.starts_with('/') || path.starts_with('\\') || path.contains('\\')
+    if !path.is_ascii() || path.starts_with('/') || path.starts_with('\\') || path.contains('\\')
         || path.contains(':') || path.chars().any(char::is_control)
     {
         return Err("Archive entry path must be a safe relative path.");
@@ -45,11 +45,12 @@ pub fn validate_archive_path(path: &str, is_directory: bool) -> Result<String, &
     for component in normalized.split('/') {
         if component.is_empty() || component == "." || component == ".."
             || component.ends_with('.') || component.ends_with(' ')
+            || component.chars().any(|character| matches!(character, '<' | '>' | '"' | '|' | '?' | '*'))
         {
             return Err("Archive entry path contains an unsafe component.");
         }
         let base = component.split('.').next().unwrap_or("").to_ascii_uppercase();
-        if matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        if matches!(base.as_str(), "CON" | "PRN" | "AUX" | "NUL" | "CONIN$" | "CONOUT$")
             || (base.len() == 4
                 && (base.starts_with("COM") || base.starts_with("LPT"))
                 && base.as_bytes()[3].is_ascii_digit()
@@ -148,7 +149,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_traversal_absolute_and_windows_unsafe_paths() {
+    fn rejects_traversal_absolute_unicode_and_windows_unsafe_paths() {
         for path in ["../outside", "a/../../outside", "/rooted", "C:/outside", "a\\b", "a//b", "a/./b", "CON.txt", "folder/LPT1.log", "trailing.", "trailing "] {
             assert!(validate_archive_path(path, false).is_err(), "accepted {path}");
         }

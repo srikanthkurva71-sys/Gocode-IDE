@@ -39,7 +39,11 @@ Unknown identifiers, wildcard permissions, and broad legacy labels are denied. G
 
 ## Current code
 
-`src-tauri/src/extension_policy.rs` provides a pure Rust, default-deny permission vocabulary and decision evaluator. It is not yet connected to a process host or Tauri command. Unit tests cover unknown permission denial, explicit grants, sensitive permission classification, duplicate normalization, and unknown grant rejection.\n\n`src-tauri/src/extension_archive_policy.rs` validates archive-entry metadata supplied by a future ZIP reader. It rejects unsafe/absolute/traversal paths, Windows device names, duplicate and case-colliding paths, symlinks, encrypted members, excessive entry counts, oversized files and total expanded size, excessive compression ratios, and file/directory prefix conflicts. Limits are 2,048 entries, 10 MiB per file, 50 MiB total expanded data, and a 100:1 compression ratio. This is a policy layer only: it does not parse ZIP bytes, extract files, verify package signatures, or install/execute extensions. A future extractor must use a fresh private staging directory and must not follow symlinks.
+`src-tauri/src/extension_policy.rs` provides a pure Rust, default-deny permission vocabulary and decision evaluator. It is not yet connected to a process host or brokered Tauri API. Unit tests cover unknown permission denial, explicit grants, sensitive permission classification, duplicate normalization, and unknown grant rejection.
+
+`src-tauri/src/extension_archive_policy.rs` validates archive-entry metadata. `src-tauri/src/extension_archive.rs` uses the pinned ZIP parser to reject duplicate names, inconsistent headers, overlapping entries, encrypted members, symlinks, special filesystem entries, unsupported compression and unsafe paths before extraction. Paths are restricted to safe ASCII Windows-compatible relative names. Limits are 2,048 entries, 10 MiB per file, 50 MiB total expanded data, a 100:1 compression ratio, a 20 MiB compressed archive, and a 64 KiB manifest.
+
+The `inspect_extension_package` native command opens the operating-system file picker, validates the selected ZIP and its strict `extension.json` manifest, extracts only regular files into a private temporary directory, returns manifest/size metadata, and then discards the staging directory. The webview cannot pass an arbitrary filesystem path to this command. This flow is validation-only: it does not verify publisher signatures, install, enable, update, or execute extensions.
 
 ## Release gates
 

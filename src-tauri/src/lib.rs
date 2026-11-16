@@ -22,6 +22,8 @@ use std::{
 use portable_pty::{native_pty_system, CommandBuilder, MasterPty, PtySize, Child};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, State};
+use tauri_plugin_dialog::DialogExt;
+use extension_archive::{stage_extension_archive, ExtensionPackageManifest};
 
 mod lsp;
 mod dap;
@@ -1150,6 +1152,49 @@ fn close_terminal(state: State<'_, TerminalState>, session_id: String) -> Result
     Ok(())
 }
 
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct ExtensionPackageInspection {
+    manifest: ExtensionPackageManifest,
+    entry_count: usize,
+    total_uncompressed_bytes: u64,
+}
+
+/// Opens a native file picker and validates a ZIP package without installing or
+/// executing it. Keeping path selection inside the native command avoids exposing
+/// an arbitrary-path file reader to the webview.
+#[tauri::command]
+async fn inspect_extension_package(app: AppHandle) -> Result<Option<ExtensionPackageInspection>, String> {
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.dialog()
+        .file()
+        .add_filter("Extension package", &["zip"])
+        .pick_file(move |selection| {
+            let _ = sender.send(selection);
+        });
+
+    let selection = tauri::async_runtime::spawn_blocking(move || {
+        receiver.recv().map_err(|_| "Extension package picker closed unexpectedly.".to_string())
+    })
+    .await
+    .map_err(|error| format!("Extension package picker failed: {error}"))??;
+    let Some(selection) = selection else { return Ok(None); };
+    let path = selection.into_path()
+        .map_err(|error| format!("Selected extension package is not a local file: {error}"))?;
+
+    tauri::async_runtime::spawn_blocking(move || {
+        let staged = stage_extension_archive(&path)?;
+        Ok(Some(ExtensionPackageInspection {
+            manifest: staged.manifest,
+            entry_count: staged.entry_count,
+            total_uncompressed_bytes: staged.total_uncompressed_bytes,
+        }))
+    })
+    .await
+    .map_err(|error| format!("Extension package validation worker failed: {error}"))?
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -1172,6 +1217,7 @@ pub fn run() {
             write_terminal_input,
             resize_terminal,
             close_terminal,
+            inspect_extension_package,
             set_project_root,
             get_project_root,
             list_project_files,

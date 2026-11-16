@@ -20,7 +20,7 @@ const MAX_COMPRESSED_ARCHIVE_BYTES: u64 = 20 * 1024 * 1024;
 const MAX_MANIFEST_BYTES: u64 = 64 * 1024;
 const MANIFEST_FILE_NAME: &str = "extension.json";
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExtensionPackageManifest {
     pub id: String,
@@ -86,6 +86,8 @@ pub(crate) struct StagedExtensionPackage {
     _directory: tempfile::TempDir,
     pub root: PathBuf,
     pub manifest: ExtensionPackageManifest,
+    pub entry_count: usize,
+    pub total_uncompressed_bytes: u64,
 }
 
 /// Parse, validate, and extract a package without installing or executing it.
@@ -226,7 +228,13 @@ pub(crate) fn stage_extension_archive(path: &Path) -> Result<StagedExtensionPack
         .map_err(|e| format!("Invalid extension manifest JSON: {e}"))?;
     manifest.validate()?;
 
-    Ok(StagedExtensionPackage { _directory: staging, root, manifest })
+    Ok(StagedExtensionPackage {
+        _directory: staging,
+        root,
+        manifest,
+        entry_count: validation.entry_count,
+        total_uncompressed_bytes: validation.total_uncompressed_bytes,
+    })
 }
 
 fn create_private_directories(root: &Path, relative: &Path) -> Result<(), String> {
