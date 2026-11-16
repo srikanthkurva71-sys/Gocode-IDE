@@ -356,12 +356,48 @@ fn write_project_file(state: State<'_, ProjectState>, path: String, content: Str
     atomic_write_file(&target, &bytes).map_err(|e| format!("Cannot save project file atomically: {e}"))
 }
 
+fn format_git_error(args: &[&str], detail: &str) -> String {
+    let diagnostic = detail.trim();
+    let normalized = diagnostic.to_ascii_lowercase();
+    match args.first().copied() {
+        Some("switch") if normalized.contains("local changes")
+            || normalized.contains("would be overwritten")
+            || normalized.contains("please commit your changes")
+            || normalized.contains("untracked working tree files would be overwritten") =>
+        {
+            format!(
+                "Branch switch blocked. Git left the current branch and working tree unchanged. Commit or stash the conflicting changes, then retry. Git detail: {diagnostic}"
+            )
+        }
+        Some("pull") if normalized.contains("not possible to fast-forward")
+            || normalized.contains("divergent branches")
+            || normalized.contains("diverged") =>
+        {
+            format!(
+                "Fast-forward pull blocked because the local and upstream histories have diverged. No merge or rebase was attempted. Reconcile the histories explicitly, then retry. Git detail: {diagnostic}"
+            )
+        }
+        Some("push") if normalized.contains("non-fast-forward")
+            || normalized.contains("[rejected]")
+            || normalized.contains("fetch first") =>
+        {
+            format!(
+                "Push rejected because the remote contains commits not present locally. No force push was attempted. Fetch and reconcile the histories, then retry. Git detail: {diagnostic}"
+            )
+        }
+        _ => diagnostic.to_string(),
+    }
+}
+
 fn run_git(root: &Path, args: &[&str]) -> Result<String, String> {
     let output = Command::new("git").arg("-C").arg(root).args(args).output()
         .map_err(|e| format!("Could not start Git. Install Git and ensure it is on PATH: {e}"))?;
     let stdout = String::from_utf8_lossy(&output.stdout).to_string();
     let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-    if !output.status.success() { return Err(if stderr.trim().is_empty() { stdout } else { stderr }); }
+    if !output.status.success() {
+        let detail = if stderr.trim().is_empty() { stdout } else { stderr };
+        return Err(format_git_error(args, &detail));
+    }
     Ok(if stderr.is_empty() { stdout } else { format!("{stdout}{stderr}") })
 }
 
@@ -1307,7 +1343,38 @@ mod project_path_tests {
 
 #[cfg(test)]
 mod git_history_tests {
-    use super::parse_git_history;
+    use super::{format_git_error, parse_git_history};
+
+    #[test]
+    fn explains_branch_switch_blocked_by_local_changes_without_losing_git_detail() {
+        let error = format_git_error(
+            &["switch", "feature"],
+            "error: Your local changes to the following files would be overwritten by checkout:\n\tsrc/main.rs",
+        );
+        assert!(error.contains("Branch switch blocked"));
+        assert!(error.contains("working tree unchanged"));
+        assert!(error.contains("src/main.rs"));
+    }
+
+    #[test]
+    fn explains_fast_forward_pull_divergence_without_attempting_merge() {
+        let error = format_git_error(
+            &["pull", "--ff-only"],
+            "fatal: Not possible to fast-forward, aborting.",
+        );
+        assert!(error.contains("Fast-forward pull blocked"));
+        assert!(error.contains("No merge or rebase was attempted"));
+    }
+
+    #[test]
+    fn explains_non_fast_forward_push_and_never_suggests_force_push() {
+        let error = format_git_error(
+            &["push", "-u", "origin", "HEAD"],
+            "! [rejected] HEAD -> feature (non-fast-forward)",
+        );
+        assert!(error.contains("Push rejected"));
+        assert!(error.contains("No force push was attempted"));
+    }
 
     #[test]
     fn parses_nul_delimited_history_records() {

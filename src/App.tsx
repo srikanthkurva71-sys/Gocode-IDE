@@ -1489,6 +1489,13 @@ export default function App() {
   }
   async function checkoutGitBranch() {
     if (!selectedBranch) return;
+    if (openTabs.some(isProjectTabDirty)) {
+      setMessage("Save modified editor tabs before switching branches; unsaved buffers are not carried across a workspace refresh.");
+      return;
+    }
+    if (gitInfo?.dirty && !window.confirm(
+      "The Git working tree has uncommitted changes. Git will switch only if the target branch can be checked out safely; if changes conflict, Git will refuse and leave the working tree unchanged. Continue?"
+    )) return;
     setGitBusy(true);
     try {
       setMessage(await invoke<string>("git_checkout_branch", { branch: selectedBranch }));
