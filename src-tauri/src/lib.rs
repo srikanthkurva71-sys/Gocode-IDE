@@ -1459,7 +1459,8 @@ mod git_history_tests {
         test_git(&peer, &["push", "origin", "main"]);
 
         super::run_git(&local, &["pull", "--ff-only"]).expect("fast-forward pull should succeed");
-        assert_eq!(fs::read_to_string(local.join("remote.txt")).unwrap(), "from remote\n");
+        let pulled_contents = fs::read_to_string(local.join("remote.txt")).unwrap();
+        assert_eq!(pulled_contents.replace("\r\n", "\n"), "from remote\n");
 
         fs::write(local.join("local.txt"), "from local\n").unwrap();
         test_git(&local, &["add", "local.txt"]);
