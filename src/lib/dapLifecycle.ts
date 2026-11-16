@@ -75,7 +75,7 @@ const transitions: Record<
     processExited: "terminated",
     failure: "failed",
   },
-  terminated: { start: "starting", stopRequested: "terminating" },
+  terminated: { start: "starting", stopRequested: "terminating", terminated: "terminated", processExited: "terminated" },
   failed: { start: "starting", stopRequested: "terminating", processExited: "terminated" },
 };
 
