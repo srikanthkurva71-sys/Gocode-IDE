@@ -24,6 +24,8 @@ const MANIFEST_FILE_NAME: &str = "extension.json";
 #[derive(Debug, Clone, Deserialize, serde::Serialize)]
 #[serde(deny_unknown_fields)]
 pub(crate) struct ExtensionPackageManifest {
+    #[serde(rename = "manifestVersion")]
+    pub manifest_version: u32,
     pub id: String,
     pub name: String,
     pub version: String,
@@ -36,6 +38,9 @@ pub(crate) struct ExtensionPackageManifest {
 
 impl ExtensionPackageManifest {
     fn validate(&mut self) -> Result<(), String> {
+        if self.manifest_version != 1 {
+            return Err("Unsupported extension manifestVersion; this host supports version 1.".into());
+        }
         self.id = self.id.trim().to_string();
         self.name = self.name.trim().to_string();
         self.version = self.version.trim().to_string();
@@ -292,7 +297,7 @@ mod tests {
     }
 
     fn valid_manifest() -> &'static [u8] {
-        br#"{"id":"sample.extension","name":"Sample Extension","version":"1.2.3","publisher":"Example","license":"MIT","description":"Test package","capabilities":["editor.read"]}"#
+        br#"{"manifestVersion":1,"id":"sample.extension","name":"Sample Extension","version":"1.2.3","publisher":"Example","license":"MIT","description":"Test package","capabilities":["editor.read"]}"#
     }
 
     fn stage_bytes(bytes: &[u8]) -> Result<StagedExtensionPackage, String> {
@@ -323,10 +328,10 @@ mod tests {
 
     #[test]
     fn rejects_unknown_manifest_fields_and_invalid_semver() {
-        let unknown = br#"{"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D","extra":true}"#;
+        let unknown = br#"{"manifestVersion":1,"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D","extra":true}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, unknown)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("manifest JSON"));
-        let invalid = br#"{"id":"sample.extension","name":"Sample","version":"01.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let invalid = br#"{"manifestVersion":1,"id":"sample.extension","name":"Sample","version":"01.0.0","publisher":"P","license":"MIT","description":"D"}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("semantic versioning"));
     }
@@ -362,20 +367,20 @@ mod tests {
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid_id)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("manifest id"));
 
-        let invalid_capability = br#"{"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D","capabilities":["editor.*"]}"#;
+        let invalid_capability = br#"{"manifestVersion":1,"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D","capabilities":["editor.*"]}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid_capability)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("invalid capability"));
     }
 
     #[test]
     fn rejects_manifest_control_characters_and_excessive_capability_count() {
-        let control = br#"{"id":"sample.extension","name":"Sample\nName","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let control = br#"{"manifestVersion":1,"id":"sample.extension","name":"Sample\nName","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, control)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("empty or invalid"));
 
         let capabilities = (0..33).map(|i| format!("\"capability{i}\"")).collect::<Vec<_>>().join(",");
         let manifest = format!(
-            "{{\"id\":\"sample.extension\",\"name\":\"Sample\",\"version\":\"1.0.0\",\"publisher\":\"P\",\"license\":\"MIT\",\"description\":\"D\",\"capabilities\":[{capabilities}]}}"
+            "{{\"manifestVersion\":1,\"id\":\"sample.extension\",\"name\":\"Sample\",\"version\":\"1.0.0\",\"publisher\":\"P\",\"license\":\"MIT\",\"description\":\"D\",\"capabilities\":[{capabilities}]}}"
         );
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, manifest.as_bytes())]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("more than 32"));

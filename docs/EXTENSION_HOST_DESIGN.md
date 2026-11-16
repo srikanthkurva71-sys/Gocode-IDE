@@ -8,6 +8,14 @@ Extension manifests are untrusted input. A declaration is a request, not proof o
 
 The extension host must run out of process with a narrow RPC protocol. Extension code must never execute in the workbench's React/WebView process or receive a general-purpose Tauri command handle.
 
+## Manifest schema and compatibility policy
+
+The package root contains `extension.json`, encoded as UTF-8 JSON. Manifest schema version 1 is defined by `schemas/extension-manifest-v1.schema.json` and enforced independently by the frontend review validator and native archive inspector. `manifestVersion` is a required integer with the exact value `1`; omission, non-integer values, and unknown versions are rejected. The v1 required fields are `id`, `name`, `version`, `publisher`, `license`, and `description`. `capabilities` is optional and defaults to an empty list; when present it contains at most 32 unique exact capability identifiers. Unknown fields are rejected.
+
+Text fields are trimmed at the edges, must remain non-empty, are limited to 500 UTF-8 bytes after trimming, and reject Unicode control characters. IDs are 2–80 safe ASCII characters and begin with an ASCII letter or digit. `version` is strict semantic versioning. Capability identifiers are not trimmed or rewritten; they must match the lowercase identifier grammar exactly.
+
+**Compatibility rules:** schema v1 is frozen for this pre-release implementation. Any change to required fields, field meaning, normalization, or accepted value grammar requires a new `manifestVersion`; a v1 reader must reject a future version rather than guess. Because v1 rejects unknown fields, even an additive field requires a schema-version increment unless the field was explicitly reserved in the v1 schema. A future host API compatibility range is a separate contract and must be designed before executable extensions are enabled; `manifestVersion` does not imply runtime API compatibility. There is currently no supported extension execution API.
+
 ## Permission vocabulary
 
 The native policy module defines exact identifiers:
@@ -41,7 +49,7 @@ Unknown identifiers, wildcard permissions, and broad legacy labels are denied. T
 
 `src-tauri/src/extension_policy.rs` provides a pure Rust, default-deny permission vocabulary and decision evaluator. It is not yet connected to a process host or brokered Tauri API. Unit tests cover unknown permission denial, explicit grants, sensitive permission classification, duplicate normalization, and unknown grant rejection.
 
-`src-tauri/src/extension_archive_policy.rs` validates archive-entry metadata. `src-tauri/src/extension_archive.rs` uses the pinned ZIP parser to reject duplicate names, inconsistent headers, overlapping entries, encrypted members, symlinks, special filesystem entries, unsupported compression and unsafe paths before extraction. Paths are restricted to safe ASCII Windows-compatible relative names. Limits are 2,048 entries, 10 MiB per file, 50 MiB total expanded data, a 100:1 compression ratio, a 20 MiB compressed archive, and a 64 KiB manifest.
+`schemas/extension-manifest-v1.schema.json` is the machine-readable v1 shape; runtime validators additionally enforce the UTF-8 byte limits and normalization rules that JSON Schema cannot express exactly. `src-tauri/src/extension_archive_policy.rs` validates archive-entry metadata. `src-tauri/src/extension_archive.rs` uses the pinned ZIP parser to reject duplicate names, inconsistent headers, overlapping entries, encrypted members, symlinks, special filesystem entries, unsupported compression and unsafe paths before extraction. Paths are restricted to safe ASCII Windows-compatible relative names. Limits are 2,048 entries, 10 MiB per file, 50 MiB total expanded data, a 100:1 compression ratio, a 20 MiB compressed archive, and a 64 KiB manifest.
 
 The `inspect_extension_package` native command opens the operating-system file picker, validates the selected ZIP and its strict `extension.json` manifest, extracts only regular files into a private temporary directory, returns manifest/size metadata and a SHA-256 digest of the exact archive bytes validated, and then discards the staging directory. The webview cannot pass an arbitrary filesystem path to this command. The digest supports independent integrity comparison but is not a signature and does not authenticate a publisher. This flow is validation-only: it does not verify publisher signatures, install, enable, update, or execute extensions.
 

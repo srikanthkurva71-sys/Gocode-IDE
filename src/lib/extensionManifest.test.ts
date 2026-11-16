@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { validateExtensionManifest } from "./extensionManifest";
 
 const valid = {
+  manifestVersion: 1,
   id: "sample.extension",
   name: "Sample Extension",
   version: "1.0.0",
@@ -18,6 +19,15 @@ describe("validateExtensionManifest", () => {
       name: "Sample Extension",
       capabilities: ["editor.read"],
     });
+  });
+
+  it("requires the supported manifest schema version", () => {
+    for (const manifestVersion of [undefined, 0, 2, "1"]) {
+      const candidate = { ...valid } as Record<string, unknown>;
+      if (manifestVersion === undefined) delete candidate.manifestVersion;
+      else candidate.manifestVersion = manifestVersion;
+      expect(() => validateExtensionManifest(candidate)).toThrow(/manifestVersion/);
+    }
   });
 
   it("rejects non-object manifests and missing fields", () => {

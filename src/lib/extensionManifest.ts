@@ -1,4 +1,5 @@
 export type ExtensionManifestReview = {
+  manifestVersion: 1;
   id: string;
   name: string;
   version: string;
@@ -9,7 +10,7 @@ export type ExtensionManifestReview = {
 };
 
 const REQUIRED_TEXT_FIELDS = ["id", "name", "version", "publisher", "license", "description"] as const;
-const ALLOWED_FIELDS = new Set<string>([...REQUIRED_TEXT_FIELDS, "capabilities"]);
+const ALLOWED_FIELDS = new Set<string>(["manifestVersion", ...REQUIRED_TEXT_FIELDS, "capabilities"]);
 const MAX_FIELD_LENGTH = 500;
 const MAX_CAPABILITIES = 32;
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
@@ -26,6 +27,9 @@ export function validateExtensionManifest(value: unknown): ExtensionManifestRevi
   }
 
   const record = value as Record<string, unknown>;
+  if (record.manifestVersion !== 1) {
+    throw new Error("Unsupported or missing manifestVersion; this host supports version 1.");
+  }
   for (const field of Object.keys(record)) {
     if (!ALLOWED_FIELDS.has(field)) {
       throw new Error("Unknown manifest field: " + field);
@@ -66,6 +70,7 @@ export function validateExtensionManifest(value: unknown): ExtensionManifestRevi
   }
 
   return {
+    manifestVersion: 1,
     id,
     name: (record.name as string).trim(),
     version,
