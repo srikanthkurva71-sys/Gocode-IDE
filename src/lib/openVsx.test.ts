@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parseOpenVsxSearchResponse } from "./openVsx";
+import { parseOpenVsxSearchResponse, readBoundedOpenVsxJson } from "./openVsx";
 
 describe("parseOpenVsxSearchResponse", () => {
   it("maps registry metadata into bounded display fields", () => {
@@ -64,5 +64,37 @@ describe("parseOpenVsxSearchResponse", () => {
 
   it("rejects an unexpected response envelope", () => {
     expect(() => parseOpenVsxSearchResponse({ results: [] })).toThrow(/unexpected search response/);
+  });
+});
+
+describe("readBoundedOpenVsxJson", () => {
+  it("parses a small JSON response", async () => {
+    const response = new Response(JSON.stringify({ extensions: [] }), {
+      headers: { "content-type": "application/json" },
+    });
+    await expect(readBoundedOpenVsxJson(response)).resolves.toEqual({ extensions: [] });
+  });
+
+  it("rejects a response whose declared length exceeds the limit", async () => {
+    const response = new Response("{}", {
+      headers: { "content-length": String(1024 * 1024 + 1) },
+    });
+    await expect(readBoundedOpenVsxJson(response)).rejects.toThrow(/1 MiB size limit/);
+  });
+
+  it("enforces the limit while streaming when content length is absent", async () => {
+    const chunk = new Uint8Array(256 * 1024);
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        for (let index = 0; index < 5; index += 1) controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const response = new Response(stream);
+    await expect(readBoundedOpenVsxJson(response)).rejects.toThrow(/1 MiB size limit/);
+  });
+
+  it("rejects malformed JSON", async () => {
+    await expect(readBoundedOpenVsxJson(new Response("{"))).rejects.toThrow(/invalid JSON/);
   });
 });

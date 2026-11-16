@@ -17,6 +17,46 @@ const REGISTRY_ORIGIN = "https://open-vsx.org";
 const MAX_QUERY_LENGTH = 100;
 const MAX_RESULTS = 20;
 
+const MAX_RESPONSE_BYTES = 1024 * 1024;
+
+export async function readBoundedOpenVsxJson(response: Response): Promise<unknown> {
+  const declaredLength = response.headers.get("content-length");
+  if (declaredLength && /^\\d+$/.test(declaredLength) && Number(declaredLength) > MAX_RESPONSE_BYTES) {
+    throw new Error("Open VSX response exceeds the 1 MiB size limit.");
+  }
+
+  const reader = response.body?.getReader();
+  if (!reader) throw new Error("Open VSX returned an empty response body.");
+  const chunks: Uint8Array[] = [];
+  let totalBytes = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      totalBytes += value.byteLength;
+      if (totalBytes > MAX_RESPONSE_BYTES) {
+        await reader.cancel();
+        throw new Error("Open VSX response exceeds the 1 MiB size limit.");
+      }
+      chunks.push(value);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+
+  const bytes = new Uint8Array(totalBytes);
+  let offset = 0;
+  for (const chunk of chunks) {
+    bytes.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  try {
+    return JSON.parse(new TextDecoder("utf-8", { fatal: true }).decode(bytes)) as unknown;
+  } catch {
+    throw new Error("Open VSX returned invalid JSON.");
+  }
+}
+
 function isRecord(value: unknown): value is Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value);
 }
@@ -115,11 +155,6 @@ export async function searchOpenVsxExtensions(
     throw new Error(`Open VSX search failed (HTTP ${response.status}).`);
   }
 
-  let payload: unknown;
-  try {
-    payload = await response.json();
-  } catch {
-    throw new Error("Open VSX returned invalid JSON.");
-  }
+  const payload = await readBoundedOpenVsxJson(response);
   return parseOpenVsxSearchResponse(payload);
 }
