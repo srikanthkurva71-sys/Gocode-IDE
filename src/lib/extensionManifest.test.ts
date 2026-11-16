@@ -8,15 +8,15 @@ const valid = {
   publisher: "Example Publisher",
   license: "MIT",
   description: "A review-only sample.",
-  capabilities: ["filesystem.read", "filesystem.read"],
+  capabilities: ["editor.read"],
 };
 
 describe("validateExtensionManifest", () => {
-  it("normalizes fields and de-duplicates declared capabilities", () => {
-    expect(validateExtensionManifest(valid)).toMatchObject({
+  it("normalizes text fields while preserving exact capability identifiers", () => {
+    expect(validateExtensionManifest({ ...valid, name: " Sample Extension " })).toMatchObject({
       id: "sample.extension",
       name: "Sample Extension",
-      capabilities: ["filesystem.read"],
+      capabilities: ["editor.read"],
     });
   });
 
@@ -46,11 +46,19 @@ describe("validateExtensionManifest", () => {
   it("limits text and validates capability identifiers", () => {
     expect(() => validateExtensionManifest({ ...valid, description: "x".repeat(501) })).toThrow(/500-character/);
     expect(() => validateExtensionManifest({ ...valid, capabilities: Array(33).fill("read") })).toThrow(/at most 32/);
-    expect(() => validateExtensionManifest({ ...valid, capabilities: [""] })).toThrow(/Capabilities/);
-    expect(() => validateExtensionManifest({ ...valid, capabilities: ["Network.HTTP"] })).toThrow(/Capabilities/);
+    for (const capability of ["", " editor.read ", "Network.HTTP", "editor.*"]) {
+      expect(() => validateExtensionManifest({ ...valid, capabilities: [capability] })).toThrow(/Capabilities/);
+    }
   });
 
-  it("rejects control characters in manifest text", () => {
-    expect(() => validateExtensionManifest({ ...valid, publisher: "Publisher\nInjected" })).toThrow(/control characters/);
+  it("rejects duplicate capability identifiers instead of silently rewriting the manifest", () => {
+    expect(() => validateExtensionManifest({ ...valid, capabilities: ["editor.read", "editor.read"] }))
+      .toThrow(/duplicate capability/);
+  });
+
+  it("rejects ASCII and C1 control characters in manifest text", () => {
+    for (const publisher of ["Publisher\nInjected", "Publisher\u0085Injected"]) {
+      expect(() => validateExtensionManifest({ ...valid, publisher })).toThrow(/control characters/);
+    }
   });
 });

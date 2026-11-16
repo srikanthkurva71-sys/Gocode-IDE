@@ -14,6 +14,7 @@ const MAX_FIELD_LENGTH = 500;
 const MAX_CAPABILITIES = 32;
 const SEMVER_PATTERN = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*)(?:\.(?:0|[1-9]\d*|[0-9A-Za-z-]*[A-Za-z-][0-9A-Za-z-]*))*))?(?:\+([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?$/;
 const CAPABILITY_PATTERN = /^[a-z][a-z0-9]*(?:[._-][a-z0-9]+)*$/;
+const CONTROL_CHARACTER_PATTERN = /[\u0000-\u001f\u007f-\u009f]/;
 
 export function validateExtensionManifest(value: unknown): ExtensionManifestReview {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
@@ -35,10 +36,11 @@ export function validateExtensionManifest(value: unknown): ExtensionManifestRevi
         typeof record[field] !== "string" || !(record[field] as string).trim()) {
       throw new Error("Missing required text field: " + field);
     }
-    if ((record[field] as string).length > MAX_FIELD_LENGTH) {
+    const normalized = (record[field] as string).trim();
+    if (new TextEncoder().encode(normalized).length > MAX_FIELD_LENGTH) {
       throw new Error("Field exceeds the 500-character limit: " + field);
     }
-    if (/[\u0000-\u001f\u007f]/.test(record[field] as string)) {
+    if (CONTROL_CHARACTER_PATTERN.test(normalized)) {
       throw new Error("Field contains unsupported control characters: " + field);
     }
   }
@@ -54,11 +56,14 @@ export function validateExtensionManifest(value: unknown): ExtensionManifestRevi
 
   const rawCapabilities = record.capabilities === undefined ? [] : record.capabilities;
   if (!Array.isArray(rawCapabilities) || rawCapabilities.length > MAX_CAPABILITIES ||
-      rawCapabilities.some(item => typeof item !== "string" || !item.trim() ||
-        item.length > 100 || !CAPABILITY_PATTERN.test(item.trim()))) {
+      rawCapabilities.some(item => typeof item !== "string" || !item ||
+        item.length > 100 || !CAPABILITY_PATTERN.test(item))) {
     throw new Error("Capabilities must be at most 32 valid lowercase capability identifiers.");
   }
-  const capabilities = [...new Set((rawCapabilities as string[]).map(item => item.trim()))];
+  const capabilities = rawCapabilities as string[];
+  if (new Set(capabilities).size !== capabilities.length) {
+    throw new Error("Manifest contains duplicate capability identifiers.");
+  }
 
   return {
     id,
