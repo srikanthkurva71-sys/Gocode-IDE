@@ -44,7 +44,10 @@ impl ExtensionCapability {
 
     /// Permissions with broad or external effects need a prominent consent warning.
     pub fn is_sensitive(self) -> bool {
-        matches!(self, Self::WorkspaceWrite | Self::NetworkRequest | Self::ProcessSpawn | Self::SecretsRead)
+        // Reading source/workspace data, editing user content, registering commands,
+        // or crossing the process/network boundary all require explicit high-visibility
+        // consent. Diagnostics are the only currently defined non-sensitive grant.
+        !matches!(self, Self::DiagnosticsPublish)
     }
 }
 
@@ -117,7 +120,7 @@ mod tests {
         let grants = ExtensionGrantSet::from_explicit_grants(["editor.read"]);
         let decisions = grants.evaluate(["editor.read", "editor.write"]);
         assert!(decisions[0].allowed);
-        assert!(!decisions[0].sensitive);
+        assert!(decisions[0].sensitive);
         assert!(!decisions[1].allowed);
     }
 
@@ -134,6 +137,24 @@ mod tests {
         let decisions = grants.evaluate([" workspace.read ", "workspace.read", ""]);
         assert_eq!(decisions.len(), 1);
         assert_eq!(decisions[0].identifier, "workspace.read");
+    }
+
+
+    #[test]
+    fn only_diagnostics_publish_is_non_sensitive() {
+        for capability in [
+            ExtensionCapability::EditorRead,
+            ExtensionCapability::EditorWrite,
+            ExtensionCapability::WorkspaceRead,
+            ExtensionCapability::WorkspaceWrite,
+            ExtensionCapability::CommandsRegister,
+            ExtensionCapability::NetworkRequest,
+            ExtensionCapability::ProcessSpawn,
+            ExtensionCapability::SecretsRead,
+        ] {
+            assert!(capability.is_sensitive(), "{} should require high-visibility consent", capability.as_str());
+        }
+        assert!(!ExtensionCapability::DiagnosticsPublish.is_sensitive());
     }
 
     #[test]

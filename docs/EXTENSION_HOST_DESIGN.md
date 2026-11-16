@@ -24,7 +24,7 @@ The native policy module defines exact identifiers:
 | `process.spawn` | Start declared tool processes through a broker | Deny |
 | `secrets.read` | Access individually selected secrets | Deny |
 
-Unknown identifiers, wildcard permissions, and broad legacy labels are denied. Grants are explicit, per extension, and revocable. Sensitive grants require clear consent explanations and should be requested only when the feature is invoked.
+Unknown identifiers, wildcard permissions, and broad legacy labels are denied. The review UI assigns risk only to exact known identifiers; unknown names never inherit a low-risk label from a familiar prefix. All capabilities except bounded `diagnostics.publish` require high-visibility consent in the native policy. Grants are explicit, per extension, and revocable. Sensitive grants require clear consent explanations and should be requested only when the feature is invoked.
 
 ## Required host design
 

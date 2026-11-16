@@ -1,27 +1,56 @@
 export type CapabilityRisk = "high" | "medium" | "low" | "unknown";
 export type CapabilityReview = { capability: string; risk: CapabilityRisk; explanation: string };
 
+const KNOWN_CAPABILITIES: Record<string, Omit<CapabilityReview, "capability">> = {
+  "editor.read": {
+    risk: "medium",
+    explanation: "May read source code and the active editor contents.",
+  },
+  "editor.write": {
+    risk: "high",
+    explanation: "May modify source code and user-visible editor contents.",
+  },
+  "workspace.read": {
+    risk: "medium",
+    explanation: "May read files from the selected project workspace.",
+  },
+  "workspace.write": {
+    risk: "high",
+    explanation: "May create, modify, or remove project files through host APIs.",
+  },
+  "diagnostics.publish": {
+    risk: "low",
+    explanation: "May publish bounded diagnostics in the IDE.",
+  },
+  "commands.register": {
+    risk: "high",
+    explanation: "May add commands that appear in the IDE command surface.",
+  },
+  "network.request": {
+    risk: "high",
+    explanation: "May communicate with external network services through a broker.",
+  },
+  "process.spawn": {
+    risk: "high",
+    explanation: "May start declared processes through a host broker.",
+  },
+  "secrets.read": {
+    risk: "high",
+    explanation: "May access individually selected credentials or secrets.",
+  },
+};
+
 export function reviewDeclaredCapability(value: string): CapabilityReview {
-  const capability = value.trim().toLowerCase();
-  if (/^(process|shell|terminal|command|exec|execute)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "high", explanation: "May run commands or start processes." };
+  const capability = value.trim();
+  const known = KNOWN_CAPABILITIES[capability];
+  if (!known) {
+    return {
+      capability: value,
+      risk: "unknown",
+      explanation: "Capability is not in the supported permission vocabulary; treat it as untrusted.",
+    };
   }
-  if (/^(network|http|https|socket|websocket|internet)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "high", explanation: "May communicate outside the device." };
-  }
-  if (/^(secrets|credentials|keychain|environment|env)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "high", explanation: "May access credentials or sensitive environment data." };
-  }
-  if (/^(filesystem|file|files)\.(write|delete|move|rename|all)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "high", explanation: "May modify or remove user files." };
-  }
-  if (/^(filesystem|file|files)\.(read|list|metadata)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "medium", explanation: "May read project or user files." };
-  }
-  if (/^(ui|editor|commands|diagnostics|completion|hover)(\.|$)/.test(capability)) {
-    return { capability: value, risk: "low", explanation: "Appears limited to IDE-facing functionality, but the declaration is unverified." };
-  }
-  return { capability: value, risk: "unknown", explanation: "Capability meaning is not recognized; review it manually." };
+  return { capability: value, ...known };
 }
 
 export function reviewCapabilities(values: string[]): CapabilityReview[] {
