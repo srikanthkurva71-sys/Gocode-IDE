@@ -68,7 +68,7 @@ export function parseOpenVsxSearchResponse(value: unknown): OpenVsxExtension[] {
       name,
       version,
       displayName: boundedText(item.displayName, 160),
-      publisher: boundedText((isRecord(item.publishedBy) ? item.publishedBy.login : item.namespace), 128),
+      publisher: boundedText(publishedBy.login, 128),
       description: boundedText(item.description, 1200),
       downloadCount: boundedCount(item.downloadCount),
       averageRating: safeRating(item.averageRating),
