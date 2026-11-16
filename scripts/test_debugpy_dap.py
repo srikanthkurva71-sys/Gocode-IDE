@@ -63,6 +63,21 @@ def send(stream, message):
     stream.flush()
 
 
+class RetryTemporaryDirectory(tempfile.TemporaryDirectory):
+    """Retry short-lived Windows file-lock races during process teardown."""
+
+    def cleanup(self):
+        deadline = time.monotonic() + 5
+        while True:
+            try:
+                super().cleanup()
+                return
+            except PermissionError:
+                if time.monotonic() >= deadline:
+                    raise
+                time.sleep(0.1)
+
+
 class DapClient:
     def __init__(self, process):
         self.process = process
@@ -141,7 +156,7 @@ def main():
         fail("debugpy is not installed; install the pinned CI dependency")
 
     print(f"debugpy {debugpy.__version__}", flush=True)
-    with tempfile.TemporaryDirectory(prefix="gocode-debugpy-") as directory:
+    with RetryTemporaryDirectory(prefix="gocode-debugpy-") as directory:
         root = Path(directory)
         program = root / "debug_target.py"
         program.write_text(
