@@ -1159,6 +1159,7 @@ struct ExtensionPackageInspection {
     manifest: ExtensionPackageManifest,
     entry_count: usize,
     total_uncompressed_bytes: u64,
+    sha256: String,
 }
 
 /// Opens a native file picker and validates a ZIP package without installing or
@@ -1189,6 +1190,7 @@ async fn inspect_extension_package(app: AppHandle) -> Result<Option<ExtensionPac
             manifest: staged.manifest,
             entry_count: staged.entry_count,
             total_uncompressed_bytes: staged.total_uncompressed_bytes,
+            sha256: staged.sha256,
         }))
     })
     .await

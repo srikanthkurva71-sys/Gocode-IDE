@@ -23,6 +23,7 @@ libc = "0.2"
 semver = "1"
 tempfile = "3"
 zip = { version = "=9.6.0", default-features = false, features = ["deflate"] }
+sha2 = "0.10"
 
 
 [target.'cfg(windows)'.dependencies]

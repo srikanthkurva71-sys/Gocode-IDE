@@ -5,10 +5,11 @@
 
 use std::{
     fs::{self, File, OpenOptions},
-    io::{Read, Write},
+    io::{Cursor, Read, Write},
     path::{Component, Path, PathBuf},
 };
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
 use zip::{CompressionMethod, ZipArchive};
 
 use crate::extension_archive_policy::{
@@ -88,6 +89,7 @@ pub(crate) struct StagedExtensionPackage {
     pub manifest: ExtensionPackageManifest,
     pub entry_count: usize,
     pub total_uncompressed_bytes: u64,
+    pub sha256: String,
 }
 
 /// Parse, validate, and extract a package without installing or executing it.
@@ -101,7 +103,18 @@ pub(crate) fn stage_extension_archive(path: &Path) -> Result<StagedExtensionPack
     }
 
     let file = File::open(path).map_err(|e| format!("Cannot open extension archive: {e}"))?;
-    let mut archive = ZipArchive::new(file)
+    let mut archive_bytes = Vec::with_capacity(link_metadata.len() as usize);
+    file.take(MAX_COMPRESSED_ARCHIVE_BYTES + 1)
+        .read_to_end(&mut archive_bytes)
+        .map_err(|e| format!("Cannot read extension archive: {e}"))?;
+    if archive_bytes.is_empty() || archive_bytes.len() as u64 > MAX_COMPRESSED_ARCHIVE_BYTES {
+        return Err("Extension archive changed or exceeds the 20 MiB compressed-size limit.".into());
+    }
+    let sha256 = Sha256::digest(&archive_bytes)
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect::<String>();
+    let mut archive = ZipArchive::new(Cursor::new(archive_bytes))
         .map_err(|e| format!("Invalid extension ZIP archive: {e}"))?;
     if archive.is_empty() || archive.len() > MAX_ARCHIVE_ENTRIES {
         return Err("Extension archive has an invalid number of entries.".into());
@@ -234,6 +247,7 @@ pub(crate) fn stage_extension_archive(path: &Path) -> Result<StagedExtensionPack
         manifest,
         entry_count: validation.entry_count,
         total_uncompressed_bytes: validation.total_uncompressed_bytes,
+        sha256,
     })
 }
 
@@ -293,6 +307,12 @@ mod tests {
         let staged = stage_bytes(&bytes).unwrap();
         assert_eq!(staged.manifest.id, "sample.extension");
         assert_eq!(fs::read(staged.root.join("src/main.js")).unwrap(), b"export {};");
+        let expected = Sha256::digest(&bytes)
+            .iter()
+            .map(|byte| format!("{byte:02x}"))
+            .collect::<String>();
+        assert_eq!(staged.sha256, expected);
+        assert_eq!(staged.sha256.len(), 64);
     }
 
     #[test]
