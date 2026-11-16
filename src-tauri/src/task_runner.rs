@@ -401,7 +401,7 @@ mod tests {
 
         let (status, _output, timed_out) =
             run_bounded_command(&mut command, 4096, Duration::from_secs(5)).unwrap();
-        assert!(status.success());
+        assert!(status.success(), "parent process failed: {status:?}; captured output: {_output}");
         assert!(!timed_out);
 
         let child_pid: u32 = fs::read_to_string(&marker)

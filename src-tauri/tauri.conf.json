@@ -20,7 +20,7 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:"
+      "csp": "default-src 'self'; connect-src 'self' https://open-vsx.org; img-src 'self' asset: data:; style-src 'self' 'unsafe-inline'; script-src 'self'; worker-src 'self' blob:"
     },
     "withGlobalTauri": false
   },
