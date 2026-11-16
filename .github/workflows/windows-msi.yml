@@ -45,6 +45,10 @@ jobs:
         run: npm ci
       - name: Verify dependency audit
         run: npm audit --audit-level=low
+      - name: Install real debug adapter test dependency
+        run: python -m pip install --disable-pip-version-check debugpy==1.8.14
+      - name: Run real debugpy DAP interoperability smoke test
+        run: python scripts/test_debugpy_dap.py
       - name: Install Rust Analyzer
         run: rustup component add rust-analyzer
       - name: Run real Rust Analyzer LSP interoperability smoke test
