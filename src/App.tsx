@@ -123,6 +123,8 @@ export default function App() {
   const [openVsxLoading, setOpenVsxLoading] = useState(false);
   const [openVsxError, setOpenVsxError] = useState("");
   const [openVsxSearched, setOpenVsxSearched] = useState(false);
+  const openVsxAbortRef = useRef<AbortController | null>(null);
+  const openVsxRequestRef = useRef(0);
   const [wordWrap, setWordWrap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").wordWrap === true; } catch { return false; } });
   const [minimap, setMinimap] = useState<boolean>(() => { try { return JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").minimap === true; } catch { return false; } });
   const [fontSize, setFontSize] = useState<number>(() => { try { const value = JSON.parse(localStorage.getItem(EDITOR_SETTINGS_KEY) || "{}").fontSize; return Number.isInteger(value) && value >= 10 && value <= 24 ? clampEditorFontSize(value) : 13; } catch { return 13; } });
@@ -1098,6 +1100,8 @@ export default function App() {
   const gitHunks = useMemo(() => parseGitHunks(gitDiff), [gitDiff]);
 
   useEffect(() => { setQuickOpenSelectedIndex(0); }, [quickOpenQuery, quickOpen]);
+
+  useEffect(() => () => { openVsxRequestRef.current += 1; openVsxAbortRef.current?.abort(); }, []);
   useEffect(() => { setCommandSelectedIndex(0); }, [commandQuery, commandPaletteOpen]);
 
   useEffect(() => {
@@ -1112,18 +1116,27 @@ export default function App() {
 
   async function searchOpenVsx(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    openVsxAbortRef.current?.abort();
+    const controller = new AbortController();
+    openVsxAbortRef.current = controller;
+    const requestId = ++openVsxRequestRef.current;
     setOpenVsxLoading(true);
     setOpenVsxError("");
     setOpenVsxSearched(true);
     try {
-      const results = await searchOpenVsxExtensions(openVsxQuery);
+      const results = await searchOpenVsxExtensions(openVsxQuery, controller.signal);
+      if (requestId !== openVsxRequestRef.current) return;
       setOpenVsxResults(results);
       if (!results.length) setOpenVsxError("No matching extensions were returned. Try a broader search.");
     } catch (error) {
+      if (controller.signal.aborted || requestId !== openVsxRequestRef.current) return;
       setOpenVsxResults([]);
       setOpenVsxError(error instanceof Error ? error.message : "Open VSX search failed.");
     } finally {
-      setOpenVsxLoading(false);
+      if (requestId === openVsxRequestRef.current) {
+        openVsxAbortRef.current = null;
+        setOpenVsxLoading(false);
+      }
     }
   }
 
