@@ -6,6 +6,7 @@ on:
     branches: ["work/**"]
     paths:
       - "src-tauri/**"
+      - "scripts/test_rust_analyzer_lsp.py"
       - ".github/workflows/rust-tests.yml"
 
 permissions:
