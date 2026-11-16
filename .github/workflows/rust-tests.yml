@@ -38,5 +38,9 @@ jobs:
         run: python scripts/generate_icon.py
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
+      - name: Install Rust Analyzer
+        run: rustup component add rust-analyzer
+      - name: Run real Rust Analyzer LSP interoperability smoke test
+        run: python scripts/test_rust_analyzer_lsp.py
       - name: Run native Rust unit and process-lifecycle tests
         run: cargo test --manifest-path src-tauri/Cargo.toml
