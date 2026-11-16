@@ -75,8 +75,8 @@ const transitions: Record<
     processExited: "terminated",
     failure: "failed",
   },
-  terminated: { start: "starting" },
-  failed: { start: "starting" },
+  terminated: { start: "starting", stopRequested: "terminating" },
+  failed: { start: "starting", stopRequested: "terminating", processExited: "terminated" },
 };
 
 export type DapLifecycleTransition = {
