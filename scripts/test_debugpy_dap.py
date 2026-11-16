@@ -87,21 +87,24 @@ class DapClient:
         }
         send(self.process.stdin, message)
         deadline = time.monotonic() + timeout
-        while time.monotonic() < deadline:
-            if not self.errors.empty():
-                fail(str(self.errors.get()))
-            try:
-                item = self.messages.get(timeout=max(0.01, deadline - time.monotonic()))
-            except queue.Empty:
-                break
-            if item.get("type") == "response" and item.get("request_seq") == request_seq:
-                if not item.get("success"):
-                    fail(f"{command} request failed: {item.get('message', item)}")
-                return item
-            # Preserve asynchronous events and unrelated adapter messages.
-            self.messages.put(item)
-            time.sleep(0.01)
-        fail(f"timed out waiting for {command} response")
+        deferred = []
+        try:
+            while time.monotonic() < deadline:
+                if not self.errors.empty():
+                    fail(str(self.errors.get()))
+                try:
+                    item = self.messages.get(timeout=max(0.01, deadline - time.monotonic()))
+                except queue.Empty:
+                    break
+                if item.get("type") == "response" and item.get("request_seq") == request_seq:
+                    if not item.get("success"):
+                        fail(f"{command} request failed: {item.get('message', item)}")
+                    return item
+                deferred.append(item)
+            fail(f"timed out waiting for {command} response")
+        finally:
+            for item in deferred:
+                self.messages.put(item)
 
     def wait_event(self, name, timeout=45):
         deadline = time.monotonic() + timeout
