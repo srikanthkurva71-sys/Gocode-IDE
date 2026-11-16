@@ -428,13 +428,14 @@ fn git_show_commit(state: State<'_, ProjectState>, hash: String) -> Result<Strin
     }
     let root = project_root(&state)?;
     let output = run_git(&root, &[
-        "show", "--format=fuller", "--stat", "--no-renames", "--no-ext-diff", &hash, "--",
+        "show", "--format=fuller", "--no-ext-diff", "--no-renames", "--no-color",
+        "--unified=3", &hash, "--",
     ])?;
     const MAX_HISTORY_DETAIL_CHARS: usize = 24_000;
     if output.len() > MAX_HISTORY_DETAIL_CHARS {
         let mut boundary = MAX_HISTORY_DETAIL_CHARS;
         while !output.is_char_boundary(boundary) { boundary -= 1; }
-        return Ok(format!("{}\\n… Commit summary truncated at 24,000 characters.", &output[..boundary]));
+        return Ok(format!("{}\n… Commit diff truncated at 24,000 characters.", &output[..boundary]));
     }
     Ok(output)
 }

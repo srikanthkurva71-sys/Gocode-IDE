@@ -59,3 +59,4 @@
 }
 
 .project-tree-viewport{height:480px;min-height:120px;overflow-y:auto;overflow-x:hidden;overscroll-behavior:contain;contain:strict}.project-tree-viewport>.project-row{height:27px;min-height:27px}
+.git-history-item{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:8px 0;border-top:1px solid #303646}.git-history-item>div{min-width:0;display:flex;flex-direction:column;gap:3px}.git-history-item strong{overflow-wrap:anywhere}.git-history-item small{color:#929bb0;overflow-wrap:anywhere}.git-history-item button,.git-diff-heading button{flex:0 0 auto;background:#29364d;border:1px solid #3b4a68;color:#eaf0ff;border-radius:4px;padding:5px 8px;cursor:pointer}.git-history-item button:disabled,.git-diff-heading button:disabled{opacity:.45;cursor:not-allowed}.git-diff-heading{display:flex;justify-content:space-between;align-items:center;gap:8px;margin:8px 0}.git-commit-diff{max-height:440px;white-space:pre;overflow:auto;overflow-wrap:normal}
