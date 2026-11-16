@@ -349,7 +349,7 @@ mod tests {
 
     #[test]
     fn rejects_manifest_control_characters_and_excessive_capability_count() {
-        let control = br#"{"id":"sample.extension","name":"Sample\\nName","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let control = br#"{"id":"sample.extension","name":"Sample\nName","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, control)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("empty or invalid"));
 
