@@ -98,7 +98,7 @@ pub fn validate_archive_inventory(
                 return Err("Archive entry has an invalid compressed size.");
             }
             if entry.compressed_size > 0
-                && entry.uncompressed_size / entry.compressed_size > MAX_COMPRESSION_RATIO
+                && entry.uncompressed_size > entry.compressed_size.saturating_mul(MAX_COMPRESSION_RATIO)
             {
                 return Err("Archive entry exceeds the compression-ratio limit.");
             }
