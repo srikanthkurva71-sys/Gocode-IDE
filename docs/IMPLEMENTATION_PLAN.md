@@ -73,9 +73,9 @@ This plan follows the current repository and the Product Architecture. Work is d
 
 ## Stage 6 — Git and collaboration workflow
 - [x] Add hunk-level staging, unstage and discard with confirmation; validate patch bounds and test native Git stage/unstage/discard behavior.
-- [ ] Add commit history and diff navigation.
-- [ ] Improve branch switching safeguards and conflict reporting.
-- [ ] Test pull/push with a local remote and configured credential helper.
+- [x] Add local commit history and bounded commit-diff navigation (latest 50 commits; displayed diff capped at 24,000 characters).
+- [x] Add unsaved-buffer protection, dirty-worktree confirmation, Git-safe branch switching, and actionable switch/pull/push conflict diagnostics with native tests.
+- [x] Test fast-forward pull and push against a local bare remote with interactive credential helpers disabled; real hosted-remote credential-helper behavior remains environment-dependent.
 - Acceptance: destructive actions are explicit and tested; credentials never enter IDE logs/settings.
 
 ## Stage 7 — Secure extension platform

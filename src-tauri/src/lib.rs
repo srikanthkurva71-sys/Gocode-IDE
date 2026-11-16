@@ -1376,6 +1376,105 @@ mod git_history_tests {
         assert!(error.contains("No force push was attempted"));
     }
 
+    fn test_git(root: &std::path::Path, args: &[&str]) -> String {
+        use std::process::Command;
+        let output = Command::new("git").arg("-C").arg(root).args(args).output()
+            .expect("Git must be installed for native Git integration tests");
+        assert!(
+            output.status.success(),
+            "git {:?} failed: {}",
+            args,
+            String::from_utf8_lossy(&output.stderr)
+        );
+        String::from_utf8_lossy(&output.stdout).trim().to_string()
+    }
+
+    fn test_directory(label: &str) -> std::path::PathBuf {
+        use std::time::{SystemTime, UNIX_EPOCH};
+        std::env::temp_dir().join(format!(
+            "gocode-{label}-{}",
+            SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos()
+        ))
+    }
+
+    fn configure_test_identity(root: &std::path::Path) {
+        test_git(root, &["config", "user.name", "Gocode IDE Test"]);
+        test_git(root, &["config", "user.email", "gocode-test@example.invalid"]);
+        test_git(root, &["config", "--local", "credential.helper", ""]);
+    }
+
+    #[test]
+    fn blocked_branch_switch_preserves_dirty_worktree_and_current_branch() {
+        use std::fs;
+
+        let root = test_directory("git-switch-safety");
+        fs::create_dir_all(&root).unwrap();
+        test_git(&root, &["init", "-b", "main"]);
+        configure_test_identity(&root);
+        fs::write(root.join("shared.txt"), "base\n").unwrap();
+        test_git(&root, &["add", "shared.txt"]);
+        test_git(&root, &["commit", "-m", "base"]);
+        test_git(&root, &["switch", "-c", "feature"]);
+        fs::write(root.join("shared.txt"), "feature version\n").unwrap();
+        test_git(&root, &["commit", "-am", "feature edit"]);
+        test_git(&root, &["switch", "main"]);
+
+        fs::write(root.join("shared.txt"), "uncommitted local work\n").unwrap();
+        let error = super::run_git(&root, &["switch", "feature"]).unwrap_err();
+        assert!(error.contains("Branch switch blocked"), "{error}");
+        assert_eq!(test_git(&root, &["branch", "--show-current"]), "main");
+        assert_eq!(fs::read_to_string(root.join("shared.txt")).unwrap(), "uncommitted local work\n");
+
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn local_remote_pull_and_push_work_without_interactive_credentials() {
+        use std::fs;
+        use std::process::Command;
+
+        let bare = test_directory("git-remote-bare");
+        let local = test_directory("git-remote-local");
+        let peer = test_directory("git-remote-peer");
+        let init = Command::new("git").args(["init", "--bare", "-b", "main"])
+            .arg(&bare).output().expect("Git must be installed");
+        assert!(init.status.success(), "bare repository init failed");
+
+        fs::create_dir_all(&local).unwrap();
+        test_git(&local, &["init", "-b", "main"]);
+        configure_test_identity(&local);
+        fs::write(local.join("base.txt"), "base\n").unwrap();
+        test_git(&local, &["add", "base.txt"]);
+        test_git(&local, &["commit", "-m", "initial"]);
+        test_git(&local, &["remote", "add", "origin", bare.to_str().unwrap()]);
+        test_git(&local, &["push", "-u", "origin", "main"]);
+
+        let peer_clone = Command::new("git").arg("clone").arg(&bare).arg(&peer)
+            .output().expect("Git must be installed");
+        assert!(peer_clone.status.success(), "peer clone failed: {}", String::from_utf8_lossy(&peer_clone.stderr));
+        configure_test_identity(&peer);
+        fs::write(peer.join("remote.txt"), "from remote\n").unwrap();
+        test_git(&peer, &["add", "remote.txt"]);
+        test_git(&peer, &["commit", "-m", "remote advance"]);
+        test_git(&peer, &["push", "origin", "main"]);
+
+        super::run_git(&local, &["pull", "--ff-only"]).expect("fast-forward pull should succeed");
+        assert_eq!(fs::read_to_string(local.join("remote.txt")).unwrap(), "from remote\n");
+
+        fs::write(local.join("local.txt"), "from local\n").unwrap();
+        test_git(&local, &["add", "local.txt"]);
+        test_git(&local, &["commit", "-m", "local advance"]);
+        super::run_git(&local, &["push", "-u", "origin", "HEAD"]).expect("push to local remote should succeed");
+        let remote_head = Command::new("git").arg("--git-dir").arg(&bare)
+            .args(["rev-parse", "refs/heads/main"]).output().expect("Git must be installed");
+        assert!(remote_head.status.success());
+        assert_eq!(String::from_utf8_lossy(&remote_head.stdout).trim(), test_git(&local, &["rev-parse", "HEAD"]));
+
+        fs::remove_dir_all(bare).unwrap();
+        fs::remove_dir_all(local).unwrap();
+        fs::remove_dir_all(peer).unwrap();
+    }
+
     #[test]
     fn parses_nul_delimited_history_records() {
         let hash = "a".repeat(40);
