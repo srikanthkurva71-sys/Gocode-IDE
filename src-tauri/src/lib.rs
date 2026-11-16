@@ -1,4 +1,5 @@
 mod extension_policy;
+mod extension_archive_policy;
 mod lsp_protocol;
 mod task_runner;
 mod workspace_io;
