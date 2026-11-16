@@ -36,6 +36,7 @@ describe("DAP lifecycle state machine", () => {
     const failed = apply("idle", "start", "failure");
     expect(failed).toBe("failed");
     expect(apply(failed, "start", "processStarted", "initializeSucceeded")).toBe("launching");
+    expect(apply(failed, "stopRequested", "processExited")).toBe("terminated");
   });
 
   it("handles process exit during initialization and termination", () => {
