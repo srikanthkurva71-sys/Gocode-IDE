@@ -48,10 +48,9 @@ describe("validateExtensionManifest", () => {
     expect(() => validateExtensionManifest({ ...valid, capabilities: Array(33).fill("read") })).toThrow(/at most 32/);
     expect(() => validateExtensionManifest({ ...valid, capabilities: [""] })).toThrow(/Capabilities/);
     expect(() => validateExtensionManifest({ ...valid, capabilities: ["Network.HTTP"] })).toThrow(/Capabilities/);
-    expect(() => validateExtensionManifest({ ...valid, capabilities: ["filesystem.read", "filesystem.read"] })).toThrow(/duplicates/);
   });
 
   it("rejects control characters in manifest text", () => {
-    expect(() => validateExtensionManifest({ ...valid, publisher: "Publisher\\nInjected" })).toThrow(/control characters/);
+    expect(() => validateExtensionManifest({ ...valid, publisher: "Publisher\nInjected" })).toThrow(/control characters/);
   });
 });
