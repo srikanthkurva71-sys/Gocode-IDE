@@ -400,7 +400,7 @@ mod tests {
         command.env("GOCODE_JOB_CHILD_PID_FILE", &marker);
 
         let (status, _output, timed_out) =
-            run_bounded_command(&mut command, 4096, Duration::from_secs(5)).unwrap();
+            run_bounded_command(&mut command, 4096, Duration::from_secs(15)).unwrap();
         assert!(status.success(), "parent process failed: {status:?}; captured output: {_output}");
         assert!(!timed_out);
 

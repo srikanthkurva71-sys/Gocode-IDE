@@ -150,7 +150,7 @@ mod tests {
 
     #[test]
     fn rejects_traversal_absolute_unicode_and_windows_unsafe_paths() {
-        for path in ["../outside", "a/../../outside", "/rooted", "C:/outside", "a\\b", "a//b", "a/./b", "CON.txt", "folder/LPT1.log", "trailing.", "trailing "] {
+        for path in ["../outside", "a/../../outside", "/rooted", "C:/outside", "a\\b", "a//b", "a/./b", "CON.txt", "CONIN$", "CONOUT$", "folder/LPT1.log", "bad<name>.txt", "bad>name.txt", "bad|name.txt", "bad?name.txt", "bad*name.txt", "bad\"name.txt", "café.txt", "trailing.", "trailing "] {
             assert!(validate_archive_path(path, false).is_err(), "accepted {path}");
         }
     }
