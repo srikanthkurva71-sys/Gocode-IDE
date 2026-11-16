@@ -156,6 +156,7 @@ export default function App() {
   const lspRecoveryGeneration = useRef(0);
   const lspRecoveryEnabled = useRef(false);
   const [dapSessionId, setDapSessionId] = useState<string | null>(null);
+  const dapSessionIdRef = useRef<string | null>(null);
   const [dapLifecycle, setDapLifecycle] = useState<DapLifecycleState>("idle");
   const dapLifecycleRef = useRef<DapLifecycleState>("idle");
 
@@ -488,6 +489,8 @@ export default function App() {
       if (dapSessionId) {
         applyDapLifecycleEvent("stopRequested");
         await invoke("dap_stop", { sessionId: dapSessionId });
+        dapSessionIdRef.current = null;
+        setDapSessionId(null);
         applyDapLifecycleEvent("terminated");
       } else if (dapLifecycleRef.current !== "idle" && dapLifecycleRef.current !== "terminated" && dapLifecycleRef.current !== "failed") {
         applyDapLifecycleEvent("reset");
@@ -508,6 +511,7 @@ export default function App() {
       setDapVariables([]);
       setDapBreakpoints({});
       const id = await invoke<string>("dap_start", { executable: profile.executable, args: profile.adapterArgs });
+      dapSessionIdRef.current = id;
       setDapSessionId(id);
       applyDapLifecycleEvent("processStarted");
       setMessage("Debug adapter started; initializing " + profile.request + ".");
@@ -543,6 +547,7 @@ export default function App() {
       applyDapLifecycleEvent("failure");
       setMessage("Debug-adapter stop failed: " + String(error));
     }
+    dapSessionIdRef.current = null;
     setDapSessionId(null);
     setDapThreads([]);
     setDapFrames([]);
@@ -565,7 +570,7 @@ export default function App() {
     let unlistenExit: (() => void) | undefined;
     void Promise.all([
       listen<{ session_id: string; message: Record<string, unknown> }>("dap-message", async event => {
-        if (!active || event.payload.session_id !== dapSessionId) return;
+        if (!active || event.payload.session_id !== dapSessionIdRef.current) return;
         const message = event.payload.message;
         const kind = String(message.type ?? "message");
         const label = message.event ? String(message.event) : message.command ? String(message.command) : kind;
@@ -657,7 +662,7 @@ export default function App() {
         }
       }),
       listen<{ session_id: string; message: string }>("dap-error", event => {
-        if (active && event.payload.session_id === dapSessionId) {
+        if (active && event.payload.session_id === dapSessionIdRef.current) {
           applyDapLifecycleEvent("failure");
           setMessage("Debug-adapter error: " + event.payload.message);
         }
