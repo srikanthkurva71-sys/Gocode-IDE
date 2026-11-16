@@ -83,7 +83,7 @@ impl ExtensionGrantSet {
     where I: IntoIterator<Item = S>, S: AsRef<str> {
         let mut seen = BTreeSet::new();
         requested.into_iter().filter_map(|value| {
-            let identifier = value.as_ref().trim().to_owned();
+            let identifier = value.as_ref().to_owned();
             if identifier.is_empty() || !seen.insert(identifier.clone()) { return None; }
             match ExtensionCapability::parse(&identifier) {
                 Some(capability) if self.allows(capability) => Some(CapabilityDecision {
@@ -132,11 +132,22 @@ mod tests {
     }
 
     #[test]
-    fn duplicate_requests_are_deduplicated_and_trimmed() {
+    fn duplicate_requests_are_deduplicated_without_normalizing_identifiers() {
         let grants = ExtensionGrantSet::from_explicit_grants(["workspace.read"]);
-        let decisions = grants.evaluate([" workspace.read ", "workspace.read", ""]);
-        assert_eq!(decisions.len(), 1);
+        let decisions = grants.evaluate(["workspace.read", "workspace.read", " workspace.read ", ""]);
+        assert_eq!(decisions.len(), 2);
+        assert!(decisions[0].allowed);
         assert_eq!(decisions[0].identifier, "workspace.read");
+        assert!(!decisions[1].allowed);
+        assert_eq!(decisions[1].identifier, " workspace.read ");
+    }
+
+    #[test]
+    fn whitespace_padded_permission_cannot_match_an_explicit_grant() {
+        let grants = ExtensionGrantSet::from_explicit_grants(["editor.read"]);
+        let decision = grants.evaluate([" editor.read "]).remove(0);
+        assert!(!decision.allowed);
+        assert!(decision.sensitive);
     }
 
     #[test]

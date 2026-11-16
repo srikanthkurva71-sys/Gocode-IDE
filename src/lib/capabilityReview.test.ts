@@ -27,6 +27,11 @@ describe("reviewDeclaredCapability", () => {
     }
   });
 
+  it("requires exact identifiers and treats whitespace-padded names as unknown", () => {
+    expect(reviewDeclaredCapability(" editor.read ").risk).toBe("unknown");
+    expect(reviewDeclaredCapability("diagnostics.publish ").risk).toBe("unknown");
+  });
+
   it("treats JavaScript object prototype keys as unknown capabilities", () => {
     for (const value of ["__proto__", "constructor", "toString", "hasOwnProperty"]) {
       expect(reviewDeclaredCapability(value).risk).toBe("unknown");
