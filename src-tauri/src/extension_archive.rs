@@ -348,6 +348,37 @@ mod tests {
     }
 
     #[test]
+    fn enforces_manifest_text_limit_in_utf8_bytes() {
+        let valid_description = "é".repeat(250);
+        let valid_manifest = serde_json::json!({
+            "manifestVersion": 1,
+            "id": "sample.extension",
+            "name": "Sample",
+            "version": "1.0.0",
+            "publisher": "P",
+            "license": "MIT",
+            "description": valid_description,
+        });
+        let valid_json = serde_json::to_vec(&valid_manifest).unwrap();
+        let valid_bytes = package_zip(&[(MANIFEST_FILE_NAME, &valid_json)]);
+        assert_eq!(stage_bytes(&valid_bytes).unwrap().manifest.description.len(), 500);
+
+        let invalid_description = "é".repeat(251);
+        let invalid_manifest = serde_json::json!({
+            "manifestVersion": 1,
+            "id": "sample.extension",
+            "name": "Sample",
+            "version": "1.0.0",
+            "publisher": "P",
+            "license": "MIT",
+            "description": invalid_description,
+        });
+        let invalid_json = serde_json::to_vec(&invalid_manifest).unwrap();
+        let invalid_bytes = package_zip(&[(MANIFEST_FILE_NAME, &invalid_json)]);
+        assert!(stage_bytes(&invalid_bytes).unwrap_err().contains("empty or invalid"));
+    }
+
+    #[test]
     fn rejects_windows_unsafe_and_unicode_archive_paths_before_extraction() {
         for path in [
             "CONIN$", "CONOUT$", "bad<name>.txt", "bad>name.txt",

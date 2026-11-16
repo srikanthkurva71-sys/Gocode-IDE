@@ -55,6 +55,8 @@ describe("validateExtensionManifest", () => {
 
   it("limits text and validates capability identifiers", () => {
     expect(() => validateExtensionManifest({ ...valid, description: "x".repeat(501) })).toThrow(/500-character/);
+    expect(validateExtensionManifest({ ...valid, description: "é".repeat(250) }).description).toHaveLength(250);
+    expect(() => validateExtensionManifest({ ...valid, description: "é".repeat(251) })).toThrow(/500-character/);
     expect(() => validateExtensionManifest({ ...valid, capabilities: Array(33).fill("read") })).toThrow(/at most 32/);
     for (const capability of ["", " editor.read ", "Network.HTTP", "editor.*"]) {
       expect(() => validateExtensionManifest({ ...valid, capabilities: [capability] })).toThrow(/Capabilities/);
