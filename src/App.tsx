@@ -545,7 +545,8 @@ export default function App() {
       applyDapLifecycleEvent("terminated");
     } catch (error) {
       applyDapLifecycleEvent("failure");
-      setMessage("Debug-adapter stop failed: " + String(error));
+      setMessage("Debug-adapter stop failed; the session handle was retained so cleanup can be retried: " + String(error));
+      return;
     }
     dapSessionIdRef.current = null;
     setDapSessionId(null);
