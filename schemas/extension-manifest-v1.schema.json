@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://gocode-ide.example/schemas/extension-manifest-v1.schema.json",
+  "$id": "https://github.com/srikanthkurva71-sys/Gocode-IDE/schemas/extension-manifest-v1.schema.json",
   "title": "Gocode IDE Extension Manifest v1",
   "description": "Pre-release package metadata schema. Runtime validators additionally enforce UTF-8 byte limits and reject Unicode control characters.",
   "type": "object",

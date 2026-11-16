@@ -337,6 +337,17 @@ mod tests {
     }
 
     #[test]
+    fn rejects_missing_or_unsupported_manifest_schema_versions() {
+        let missing = br#"{"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, missing)]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("manifestVersion"));
+
+        let unsupported = br#"{"manifestVersion":2,"id":"sample.extension","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let bytes = package_zip(&[(MANIFEST_FILE_NAME, unsupported)]);
+        assert!(stage_bytes(&bytes).unwrap_err().contains("manifestVersion"));
+    }
+
+    #[test]
     fn rejects_windows_unsafe_and_unicode_archive_paths_before_extraction() {
         for path in [
             "CONIN$", "CONOUT$", "bad<name>.txt", "bad>name.txt",
@@ -363,7 +374,7 @@ mod tests {
 
     #[test]
     fn rejects_manifest_identifiers_and_capabilities_outside_the_schema() {
-        let invalid_id = br#"{"id":"../escape","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
+        let invalid_id = br#"{"manifestVersion":1,"id":"../escape","name":"Sample","version":"1.0.0","publisher":"P","license":"MIT","description":"D"}"#;
         let bytes = package_zip(&[(MANIFEST_FILE_NAME, invalid_id)]);
         assert!(stage_bytes(&bytes).unwrap_err().contains("manifest id"));
 
