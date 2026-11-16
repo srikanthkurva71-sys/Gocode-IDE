@@ -668,8 +668,9 @@ export default function App() {
         }
       }),
       listen<{ session_id: string }>("dap-exited", event => {
-        if (active && event.payload.session_id === dapSessionId) {
+        if (active && event.payload.session_id === dapSessionIdRef.current) {
           applyDapLifecycleEvent("processExited");
+          dapSessionIdRef.current = null;
           setDapSessionId(null);
           setDapThreads([]);
           setDapFrames([]);
