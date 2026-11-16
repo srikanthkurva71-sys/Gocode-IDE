@@ -16,7 +16,7 @@
 ## Week 1 — Baseline, correctness, and product gaps (Nov 16–22)
 
 1. Reconcile the implementation plan with the actual repository and run all CI workflows on the current head.
-2. Inventory native Tauri commands, process launch paths, plugin permissions, and frontend invoke/event usage.
+2. [x] Inventory native Tauri commands, process launch paths, plugin permissions, and frontend invoke/event usage. See [Native Boundary and Process Inventory](NATIVE_BOUNDARY_INVENTORY.md).
 3. Prioritize correctness defects in workspace/file operations, task execution, Git, LSP, DAP, and recovery.
 4. Close high-value workbench gaps that can be implemented and tested safely; evaluate split editor groups, breadcrumbs/outline, and test-result navigation against the current UI architecture.
 5. Add regression tests for every defect fixed and update the implementation classification only when code and tests demonstrate completion.
