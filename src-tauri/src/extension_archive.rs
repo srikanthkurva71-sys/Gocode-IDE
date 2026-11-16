@@ -68,7 +68,7 @@ impl ExtensionPackageManifest {
             if capability.is_empty() || capability.len() > 100
                 || !capability.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
                 || !capability.as_bytes()[0].is_ascii_lowercase()
-                || capability.split(['.', '_', '-']).any(|part| part.is_empty())
+                || capability.split(|character| matches!(character, '.' | '_' | '-')).any(|part| part.is_empty())
             {
                 return Err("Extension manifest contains an invalid capability identifier.".into());
             }
