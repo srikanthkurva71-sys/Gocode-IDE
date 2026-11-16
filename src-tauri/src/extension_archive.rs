@@ -35,6 +35,12 @@ pub(crate) struct ExtensionPackageManifest {
 
 impl ExtensionPackageManifest {
     fn validate(&mut self) -> Result<(), String> {
+        self.id = self.id.trim().to_string();
+        self.name = self.name.trim().to_string();
+        self.version = self.version.trim().to_string();
+        self.publisher = self.publisher.trim().to_string();
+        self.license = self.license.trim().to_string();
+        self.description = self.description.trim().to_string();
         for (field, value) in [
             ("id", &self.id), ("name", &self.name), ("version", &self.version),
             ("publisher", &self.publisher), ("license", &self.license),
@@ -62,8 +68,7 @@ impl ExtensionPackageManifest {
             if capability.is_empty() || capability.len() > 100
                 || !capability.bytes().all(|b| b.is_ascii_lowercase() || b.is_ascii_digit() || matches!(b, b'.' | b'_' | b'-'))
                 || !capability.as_bytes()[0].is_ascii_lowercase()
-                || capability.ends_with(['.', '_', '-'])
-                || capability.contains("..") || capability.contains("__") || capability.contains("--")
+                || capability.split(['.', '_', '-']).any(|part| part.is_empty())
             {
                 return Err("Extension manifest contains an invalid capability identifier.".into());
             }
@@ -76,6 +81,7 @@ impl ExtensionPackageManifest {
 }
 
 /// Keeps the private staging directory alive while its contents are reviewed.
+#[derive(Debug)]
 pub(crate) struct StagedExtensionPackage {
     _directory: tempfile::TempDir,
     pub root: PathBuf,
