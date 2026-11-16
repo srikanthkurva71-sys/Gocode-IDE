@@ -391,6 +391,7 @@ export default function App() {
       const watchExpression = dapWatchPending.current[seq];
       delete dapWatchPending.current[seq];
       if (watchExpression) setDapWatchValues(current => ({ ...current, [watchExpression]: "Evaluation timed out" }));
+      if (["launch", "attach", "configurationDone"].includes(command)) applyDapLifecycleEvent("failure");
       setMessage("Debug-adapter request timed out: " + command);
 
       // DAP cancellation is best-effort: adapters may not support it, but a
