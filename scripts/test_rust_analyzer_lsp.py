@@ -16,6 +16,18 @@ def fail(message):
     raise SystemExit(f"rust-analyzer LSP smoke test failed: {message}")
 
 
+def read_exact(stream, length):
+    chunks = []
+    remaining = length
+    while remaining:
+        chunk = stream.read(remaining)
+        if not chunk:
+            raise EOFError("truncated LSP message")
+        chunks.append(chunk)
+        remaining -= len(chunk)
+    return b"".join(chunks)
+
+
 def reader(stream, messages, errors):
     try:
         while True:
@@ -37,9 +49,7 @@ def reader(stream, messages, errors):
             length = headers.get("content-length")
             if length is None or length < 0 or length > 8 * 1024 * 1024:
                 raise ValueError("missing or invalid Content-Length")
-            body = stream.read(length)
-            if len(body) != length:
-                raise EOFError("truncated LSP message")
+            body = read_exact(stream, length)
             messages.put(json.loads(body.decode("utf-8")))
     except BaseException as error:
         errors.put(error)
