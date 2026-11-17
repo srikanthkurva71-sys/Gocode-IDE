@@ -784,7 +784,13 @@ fn run_source_file(state: State<'_, ProjectState>, path: String) -> Result<TaskR
         }
         "py" | "js" | "mjs" | "cjs" | "go" => {
             let (program, args): (&str, Vec<String>) = match extension.as_str() {
-                "py" => ("python", vec![source.clone()]),
+                "py" => {
+                    let interpreter = resolve_python_executable(
+                        executable_on_path("python"),
+                        executable_on_path("python3"),
+                    ).ok_or_else(|| "Could not find Python. Install Python and ensure 'python' or 'python3' is on PATH.".to_string())?;
+                    (interpreter, vec![source.clone()])
+                }
                 "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
                 "go" => ("go", vec!["run".into(), source.clone()]),
                 _ => unreachable!(),
