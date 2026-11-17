@@ -6,7 +6,7 @@ mod task_runner;
 mod workspace_io;
 mod git_hunks;
 
-use task_runner::{resolve_project_task, run_bounded_command, run_bounded_command_controlled, TaskResult};
+use task_runner::{resolve_project_task, resolve_python_executable, run_bounded_command, run_bounded_command_controlled, TaskResult};
 use workspace_io::{atomic_write_file, decode_project_text, encode_project_text, verify_expected_contents, ProjectFileRead, ProjectTextFormat};
 
 use std::{
@@ -726,7 +726,13 @@ fn execute_source_file_controlled(
         }
         "py" | "js" | "mjs" | "cjs" | "go" => {
             let (program, args): (&str, Vec<String>) = match extension.as_str() {
-                "py" => ("python", vec![source.clone()]),
+                "py" => {
+                    let interpreter = resolve_python_executable(
+                        executable_on_path("python"),
+                        executable_on_path("python3"),
+                    ).ok_or_else(|| "Could not find Python. Install Python and ensure 'python' or 'python3' is on PATH.".to_string())?;
+                    (interpreter, vec![source.clone()])
+                }
                 "js" | "mjs" | "cjs" => ("node", vec![source.clone()]),
                 "go" => ("go", vec!["run".into(), source.clone()]),
                 _ => unreachable!(),
