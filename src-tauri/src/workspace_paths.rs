@@ -7,7 +7,7 @@ pub fn safe_relative_path(root: &Path, relative: &str) -> Result<PathBuf, String
     let rel = Path::new(relative);
     if relative.is_empty()
         || relative.trim() != relative
-        || relative.contains('\\\\')
+        || relative.contains('\\')
         || relative.contains(':')
         || rel.is_absolute()
         || relative.split('/').any(|part| {
@@ -132,7 +132,7 @@ mod tests {
         for path in [
             "C:/Windows/secret.txt",
             "D:relative.txt",
-            "src\\\\main.rs",
+            "src\\main.rs",
             "src//main.rs",
             "src/file:name.rs",
             "CON",
