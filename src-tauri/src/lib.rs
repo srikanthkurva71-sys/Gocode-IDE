@@ -1064,15 +1064,6 @@ pub fn run() {
 }
 
 #[cfg(test)]
-mod project_path_tests {
-    use super::{ensure_safe_parent_directories, safe_relative_path};
-    use std::path::Path;
-
-
-}
-
-
-#[cfg(test)]
 mod git_history_tests {
     use super::{format_git_error, parse_git_history};
 
