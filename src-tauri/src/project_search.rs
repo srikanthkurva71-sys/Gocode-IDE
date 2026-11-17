@@ -14,13 +14,13 @@ fn ensure_project_search_current(generation: &AtomicU64, request_generation: u64
 }
 
 #[derive(Serialize)]
-struct ProjectSearchResult {
+pub struct ProjectSearchResult {
     path: String,
     line_number: usize,
     snippet: String,
 }
 
-fn normalize_search_query(query: &str) -> Result<String, String> {
+pub fn normalize_search_query(query: &str) -> Result<String, String> {
     let normalized = query.trim().to_lowercase();
     if normalized.is_empty() {
         return Err("Enter text to search for.".into());
@@ -31,7 +31,7 @@ fn normalize_search_query(query: &str) -> Result<String, String> {
     Ok(normalized)
 }
 
-fn search_project_root(
+pub fn search_project_root(
     root: &Path,
     query: &str,
     generation: &AtomicU64,
