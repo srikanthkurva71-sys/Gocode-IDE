@@ -26,6 +26,18 @@ pub struct TaskSpec {
 }
 
 /// Resolve only known, fixed project tasks. Never interpret user input as a shell command.
+/// Prefer the canonical Python launcher name, but support environments that
+/// expose only `python3` (common on Unix-like development machines).
+pub fn resolve_python_executable(python_on_path: bool, python3_on_path: bool) -> Option<&'static str> {
+    if python_on_path {
+        Some("python")
+    } else if python3_on_path {
+        Some("python3")
+    } else {
+        None
+    }
+}
+
 pub fn resolve_project_task(label: &str) -> Option<TaskSpec> {
     const TASKS: &[TaskSpec] = &[
         TaskSpec { label: "npm run build", program: "npm", args: &["run", "build"] },
@@ -301,6 +313,13 @@ pub fn run_bounded_command_controlled(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn resolves_python_launcher_with_python3_fallback() {
+        assert_eq!(resolve_python_executable(true, true), Some("python"));
+        assert_eq!(resolve_python_executable(false, true), Some("python3"));
+        assert_eq!(resolve_python_executable(false, false), None);
+    }
 
     #[test]
     fn resolves_only_allowlisted_tasks() {
