@@ -20,6 +20,15 @@ pub struct ProjectSearchResult {
     snippet: String,
 }
 
+fn sort_search_results(results: &mut [ProjectSearchResult]) {
+    results.sort_by(|a, b| {
+        a.path
+            .to_lowercase()
+            .cmp(&b.path.to_lowercase())
+            .then(a.line_number.cmp(&b.line_number))
+    });
+}
+
 fn bounded_snippet(line: &str, max_chars: usize) -> String {
     let trimmed = line.trim();
     let mut chars = trimmed.chars();
@@ -96,6 +105,7 @@ pub fn search_project_root(
                     });
                     if results.len() >= 200 {
                         ensure_project_search_current(generation, request_generation)?;
+                        sort_search_results(&mut results);
                         return Ok(results);
                     }
                 }
@@ -104,7 +114,7 @@ pub fn search_project_root(
         if inspected_files > 10000 || inspected_entries > 10000 { break; }
     }
     ensure_project_search_current(generation, request_generation)?;
-    results.sort_by(|a, b| a.path.to_lowercase().cmp(&b.path.to_lowercase()).then(a.line_number.cmp(&b.line_number)));
+    sort_search_results(&mut results);
     Ok(results)
 }
 
