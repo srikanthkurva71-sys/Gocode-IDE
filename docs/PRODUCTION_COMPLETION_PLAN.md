@@ -15,7 +15,7 @@
 
 ## Week 1 — Baseline, correctness, and product gaps (Nov 16–22)
 
-1. Reconcile the implementation plan with the actual repository and run all CI workflows on the current head.
+1. [x] Reconcile the implementation plan with the actual repository and run all CI workflows on the current head. Verified at commit `77404bca16490a0863c1970d6cd6dd701eab9ec0`: frontend workflow `44108975711`, Rust native tests `44108975925`, Windows MSI build and install/launch smoke `44108975735` all passed.
 2. [x] Inventory native Tauri commands, process launch paths, plugin permissions, and frontend invoke/event usage. See [Native Boundary and Process Inventory](NATIVE_BOUNDARY_INVENTORY.md).
 3. Prioritize correctness defects in workspace/file operations, task execution, Git, LSP, DAP, and recovery.
 4. Close high-value workbench gaps that can be implemented and tested safely; evaluate split editor groups, breadcrumbs/outline, and test-result navigation against the current UI architecture.
