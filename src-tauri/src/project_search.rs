@@ -125,6 +125,30 @@ mod tests {
     use std::{path::Path, sync::atomic::AtomicU64};
 
     #[test]
+    fn capped_search_results_are_sorted_deterministically() {
+        use super::{sort_search_results, ProjectSearchResult};
+        let mut results = vec![
+            ProjectSearchResult { path: "z.rs".into(), line_number: 1, snippet: "z".into() },
+            ProjectSearchResult { path: "A.rs".into(), line_number: 3, snippet: "a3".into() },
+            ProjectSearchResult { path: "a.rs".into(), line_number: 2, snippet: "a2".into() },
+        ];
+        sort_search_results(&mut results);
+        assert_eq!(results.iter().map(|r| (r.path.as_str(), r.line_number)).collect::<Vec<_>>(),
+            vec![("A.rs", 3), ("a.rs", 2), ("z.rs", 1)]);
+    }
+
+    #[test]
+    fn snippet_limit_counts_unicode_characters_and_marks_truncation() {
+        use super::bounded_snippet;
+        let exact = bounded_snippet(&"é".repeat(240), 240);
+        assert_eq!(exact.chars().count(), 240);
+        assert!(!exact.ends_with('…'));
+        let longer = bounded_snippet(&"é".repeat(241), 240);
+        assert_eq!(longer.chars().count(), 241);
+        assert!(longer.ends_with('…'));
+    }
+
+    #[test]
     fn normalizes_search_query_case_and_whitespace() {
         assert_eq!(normalize_search_query("  HeLLo  ").unwrap(), "hello");
     }
