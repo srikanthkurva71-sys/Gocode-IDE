@@ -20,6 +20,17 @@ pub struct ProjectSearchResult {
     snippet: String,
 }
 
+fn bounded_snippet(line: &str, max_chars: usize) -> String {
+    let trimmed = line.trim();
+    let mut chars = trimmed.chars();
+    let snippet: String = chars.by_ref().take(max_chars).collect();
+    if chars.next().is_some() {
+        format!("{snippet}…")
+    } else {
+        snippet
+    }
+}
+
 pub fn normalize_search_query(query: &str) -> Result<String, String> {
     let normalized = query.trim().to_lowercase();
     if normalized.is_empty() {
@@ -77,11 +88,7 @@ pub fn search_project_root(
             for (index, line) in contents.lines().enumerate() {
                 ensure_project_search_current(generation, request_generation)?;
                 if line.to_lowercase().contains(query) {
-                    let mut snippet = line.trim().to_string();
-                    if snippet.len() > 240 {
-                        snippet.truncate(240);
-                        snippet.push('…');
-                    }
+                    let snippet = bounded_snippet(line, 240);
                     results.push(ProjectSearchResult {
                         path: relative.clone(),
                         line_number: index + 1,
@@ -157,6 +164,23 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn long_unicode_snippets_are_truncated_without_panicking() {
+        use super::search_project_root;
+        use std::{fs, sync::atomic::AtomicU64, time::{SystemTime, UNIX_EPOCH}};
+
+        let unique = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let root = std::env::temp_dir().join(format!("gocode-search-unicode-test-{unique}"));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("unicode.txt"), format!("{} needle", "é".repeat(300))).unwrap();
+        let generation = AtomicU64::new(1);
+        let results = search_project_root(&root, "needle", &generation, 1).unwrap();
+        assert_eq!(results.len(), 1);
+        assert!(results[0].snippet.ends_with('…'));
+        assert!(results[0].snippet.chars().count() <= 241);
+        fs::remove_dir_all(root).unwrap();
+    }
 
     #[test]
     fn project_search_stops_before_reading_a_directory_when_cancelled() {
