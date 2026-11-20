@@ -25,6 +25,7 @@ fn sort_search_results(results: &mut [ProjectSearchResult]) {
         a.path
             .to_lowercase()
             .cmp(&b.path.to_lowercase())
+            .then(a.path.cmp(&b.path))
             .then(a.line_number.cmp(&b.line_number))
     });
 }
