@@ -58,3 +58,32 @@ export function reviewDeclaredCapability(value: string): CapabilityReview {
 export function reviewCapabilities(values: string[]): CapabilityReview[] {
   return values.map(reviewDeclaredCapability);
 }
+
+
+export type CapabilityRiskSummary = {
+  total: number;
+  low: number;
+  medium: number;
+  high: number;
+  unknown: number;
+  requiresManualReview: boolean;
+};
+
+/** Summarizes declared permissions without ever treating unknown capabilities as safe. */
+export function summarizeCapabilityRisks(values: string[]): CapabilityRiskSummary {
+  const reviews = reviewCapabilities(values);
+  const summary: CapabilityRiskSummary = {
+    total: reviews.length,
+    low: 0,
+    medium: 0,
+    high: 0,
+    unknown: 0,
+    requiresManualReview: false,
+  };
+
+  for (const review of reviews) {
+    summary[review.risk] += 1;
+  }
+  summary.requiresManualReview = summary.high > 0 || summary.unknown > 0;
+  return summary;
+}
