@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { reviewCapabilities, reviewDeclaredCapability } from "./capabilityReview";
+import { reviewCapabilities, reviewDeclaredCapability, summarizeCapabilityRisks } from "./capabilityReview";
 
 describe("reviewDeclaredCapability", () => {
   it("marks process, network, credentials, writes, and command registration as high risk", () => {
@@ -40,5 +40,46 @@ describe("reviewDeclaredCapability", () => {
 
   it("preserves declaration order for review", () => {
     expect(reviewCapabilities(["workspace.read", "network.request"]).map(item => item.risk)).toEqual(["medium", "high"]);
+  });
+});
+
+
+describe("summarizeCapabilityRisks", () => {
+  it("counts each risk level and requires review for high or unknown permissions", () => {
+    expect(summarizeCapabilityRisks([
+      "diagnostics.publish",
+      "editor.read",
+      "editor.write",
+      "mystery.permission",
+    ])).toEqual({
+      total: 4,
+      low: 1,
+      medium: 1,
+      high: 1,
+      unknown: 1,
+      requiresManualReview: true,
+    });
+  });
+
+  it("does not require manual review for only known low-risk capabilities", () => {
+    expect(summarizeCapabilityRisks(["diagnostics.publish"])).toEqual({
+      total: 1,
+      low: 1,
+      medium: 0,
+      high: 0,
+      unknown: 0,
+      requiresManualReview: false,
+    });
+  });
+
+  it("handles an empty capability list", () => {
+    expect(summarizeCapabilityRisks([])).toEqual({
+      total: 0,
+      low: 0,
+      medium: 0,
+      high: 0,
+      unknown: 0,
+      requiresManualReview: false,
+    });
   });
 });
